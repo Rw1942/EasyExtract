@@ -8,4 +8,4 @@ directory = "./public"
 [[d1_databases]]
 binding = "DB"
 database_name = "easyextract-db"
-database_id = "local"
+database_id = "0dccdc9d-122c-40ce-96c3-4073bcbda09f"
