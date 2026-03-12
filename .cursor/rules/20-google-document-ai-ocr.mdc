@@ -1,0 +1,43 @@
+---
+description: Google Cloud Vision API OCR integration rules (REST endpoint, auth, payload conventions).
+globs: "{src/services/documentAi.ts,src/services/auth.ts,src/**/*.ts}"
+alwaysApply: true
+---
+
+# Google Cloud Vision API OCR rules
+
+## API endpoint (REST)
+- Cloud Vision `images:annotate` endpoint:
+  - `POST https://vision.googleapis.com/v1/images:annotate`
+- Requests are JSON with a `requests` array, each item containing:
+  - `image: { content }` where `content` is base64
+  - `features: [{ type: "DOCUMENT_TEXT_DETECTION" }]`
+- Batch up to 16 images per request.
+- Include `x-goog-user-project` header for billing attribution.
+
+## Authentication
+- Use OAuth2 access tokens derived from a Service Account (server-to-server).
+- In the Worker:
+  - do NOT rely on interactive `gcloud` auth
+  - do NOT bundle the entire service account JSON in source control
+- Preferred approach:
+  - Store service account JSON as a secret (`.dev.vars` locally, Wrangler secrets in prod)
+  - Generate a signed JWT assertion and exchange it for an access token
+  - Cache the access token until expiry (in-memory per isolate is fine for a POC)
+
+## Output handling
+- Extract `fullTextAnnotation.text` from each response item.
+- Keep OCR output parsing minimal:
+  - extract full text
+  - optionally keep page/paragraph structure only if user needs it
+- Normalize OCR text before sending to OpenAI:
+  - strip obviously empty pages
+  - limit max characters / tokens to avoid runaway OpenAI usage
+  - include minimal metadata: filename, mimeType, page count if available
+
+## Error handling
+- Treat upstream errors distinctly:
+  - Auth error (401/403) -> map to 502 with `UPSTREAM_AUTH_FAILED`
+  - Vision API validation (400) -> map to 400 with `INVALID_DOCUMENT`
+  - Rate/Quota (429) -> map to 503 with `UPSTREAM_RATE_LIMITED`
+  - Other 5xx -> map to 502 with `UPSTREAM_ERROR`

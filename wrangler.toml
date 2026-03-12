@@ -1,0 +1,11 @@
+name = "easyextract"
+main = "src/index.ts"
+compatibility_date = "2025-02-14"
+
+[assets]
+directory = "./public"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "easyextract-db"
+database_id = "local"

@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Upload PDFs and extract structured data with AI">
+  <title>EasyExtract</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📄</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <div class="header-brand" id="headerTitle">
+      <svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+      EasyExtract
+    </div>
+    <nav id="mainNav">
+      <button class="nav-tab" id="navBuckets" onclick="goHome()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        Buckets
+      </button>
+      <button class="nav-tab" id="navTemplates" onclick="goToTemplates()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+        Templates
+      </button>
+    </nav>
+    <div id="breadcrumb"></div>
+    <button class="icon-btn" id="headerSettingsBtn" onclick="showSettings()" title="Settings">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+  </header>
+
+  <main>
+    <!-- Setup banner (shown when API keys are missing) -->
+    <div id="setupBanner" class="setup-banner" hidden>
+      <div class="setup-banner-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </div>
+      <div class="setup-banner-content">
+        <h3>Setup Required</h3>
+        <p>EasyExtract needs API keys to process documents. Edit <code>.dev.vars</code> in the project root, then restart <code>wrangler dev</code>.</p>
+        <div id="setupChecklist" class="setup-checklist"></div>
+        <details>
+          <summary>Step-by-step setup guide</summary>
+          <div class="setup-guide">
+            <h4>1. OpenAI API Key</h4>
+            <ol>
+              <li>Go to <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com/api-keys</a></li>
+              <li>Click "Create new secret key"</li>
+              <li>Copy it and paste into <code>.dev.vars</code> as <code>OPENAI_API_KEY=sk-...</code></li>
+            </ol>
+
+            <h4>2. Google Cloud Vision API</h4>
+            <ol>
+              <li>Go to <a href="https://console.cloud.google.com/apis/library/vision.googleapis.com" target="_blank">Cloud Vision API</a> and click <strong>Enable</strong></li>
+              <li>Go to <a href="https://console.cloud.google.com/iam-admin/serviceaccounts" target="_blank">Service Accounts</a></li>
+              <li>Create a service account (or use an existing one)</li>
+              <li>Click into the service account &rarr; Keys tab &rarr; Add Key &rarr; JSON</li>
+              <li>Open the downloaded JSON file, copy the entire contents onto one line</li>
+            </ol>
+
+            <h4>3. Fill in .dev.vars</h4>
+            <pre>OPENAI_API_KEY=sk-your-key-here
+GCP_SA_KEY={"type":"service_account","project_id":"...","private_key":"...","client_email":"...","token_uri":"https://oauth2.googleapis.com/token"}
+GCP_PROJECT_ID=your-project-id</pre>
+
+            <h4>4. Restart the dev server</h4>
+            <pre>npm run dev</pre>
+          </div>
+        </details>
+      </div>
+    </div>
+
+    <!-- Dashboard: list of buckets -->
+    <section id="viewDashboard" class="view">
+      <div class="toolbar">
+        <div>
+          <h2>Buckets</h2>
+          <p class="toolbar-sub">Each bucket holds documents of one type, extracted with a shared template.</p>
+        </div>
+        <div class="toolbar-actions">
+          <button class="ai-btn" onclick="showTemplateBuilder()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2L9 12l-7 1 5 5-2 7 7-4 7 4-2-7 5-5-7-1z"/></svg>
+            Build Template
+          </button>
+          <button class="primary" onclick="showNewBucket()">+ New Bucket</button>
+        </div>
+      </div>
+      <div id="bucketGrid" class="card-grid"></div>
+      <div id="noBuckets" class="onboarding" hidden></div>
+    </section>
+
+    <!-- Bucket detail: jobs queue -->
+    <section id="viewBucket" class="view" hidden>
+      <div class="toolbar">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <h2 id="bucketName"></h2>
+          <button class="icon-btn" id="btnRenameBucket" onclick="startRenameBucket()" title="Rename">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+        </div>
+        <div class="toolbar-actions">
+          <button id="btnExportCsv" onclick="exportBucketCSV()" hidden>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export CSV
+          </button>
+          <button onclick="openUploadZone()">+ Upload PDFs</button>
+          <button class="primary" id="btnRunAll" onclick="runAllPending()">Extract All</button>
+        </div>
+      </div>
+
+      <div id="bucketInfoBar" class="bucket-info-bar" hidden></div>
+
+      <div id="uploadZone" class="upload-zone" hidden>
+        <div class="drop-area" id="dropArea">
+          <svg class="drop-icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <p>Drop PDF files here or <label class="file-label">browse<input type="file" id="fileInput" accept=".pdf" multiple></label></p>
+          <span class="drop-hint">Supports multi-page PDF documents</span>
+        </div>
+      </div>
+
+      <!-- Processing card -->
+      <div id="processingCard" class="processing-card" hidden>
+        <div class="pc-header">
+          <div class="pc-spinner" id="pcSpinner"></div>
+          <div class="pc-meta">
+            <span class="pc-filename" id="pcFilename"></span>
+            <span class="pc-dest" id="pcDest"></span>
+          </div>
+          <span class="pc-pct" id="pcPct"></span>
+        </div>
+        <div class="pc-steps">
+          <div class="pc-step" id="pcStep0">
+            <span class="pc-dot"></span>
+            <span class="pc-step-label">Convert pages to images</span>
+            <span class="pc-step-extra" id="pcExtra0"></span>
+          </div>
+          <div class="pc-step" id="pcStep1">
+            <span class="pc-dot"></span>
+            <span class="pc-step-label">Upload to server</span>
+            <span class="pc-step-extra" id="pcExtra1"></span>
+          </div>
+          <div class="pc-step" id="pcStep2">
+            <span class="pc-dot"></span>
+            <span class="pc-step-label">Read document text (OCR)</span>
+            <span class="pc-step-extra" id="pcExtra2"></span>
+          </div>
+        </div>
+        <div class="progress-bar"><div id="pcBar" class="progress-fill"></div></div>
+      </div>
+
+      <div class="table-wrap">
+        <table id="jobsTable">
+          <thead>
+            <tr><th>File</th><th>Pages</th><th>Status</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="jobsBody"></tbody>
+        </table>
+      </div>
+      <p id="noJobs" class="empty-state" hidden>No documents yet. Upload some PDFs to get started.</p>
+    </section>
+
+    <!-- Template list -->
+    <section id="viewTemplateList" class="view" hidden>
+      <div class="toolbar">
+        <div>
+          <h2>Templates</h2>
+          <p class="toolbar-sub">Templates define which fields to extract from documents in a bucket.</p>
+        </div>
+        <div class="toolbar-actions">
+          <button onclick="showTemplateEditor()">+ Manual</button>
+          <button class="primary ai-btn" onclick="showTemplateBuilder()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2L9 12l-7 1 5 5-2 7 7-4 7 4-2-7 5-5-7-1z"/></svg>
+            Build with AI
+          </button>
+        </div>
+      </div>
+      <div id="templateGrid" class="card-grid"></div>
+    </section>
+
+    <!-- Template editor -->
+    <section id="viewTemplateEditor" class="view" hidden>
+      <h2 id="templateEditorTitle">New Template</h2>
+      <form id="templateForm" onsubmit="saveTemplate(event)">
+        <label>Template Name
+          <input type="text" id="tmplName" required placeholder="e.g. Income Statement">
+        </label>
+        <label>Document Type Hint
+          <input type="text" id="tmplDocType" placeholder="e.g. Income statement, Bank statement">
+        </label>
+
+        <fieldset>
+          <legend>Fields</legend>
+          <div id="fieldsList"></div>
+          <button type="button" class="add-field-btn" onclick="addFieldRow()">+ Add Field</button>
+        </fieldset>
+
+        <div class="form-actions">
+          <button type="button" onclick="goBack()">Cancel</button>
+          <button type="submit" class="primary">Save Template</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- New Bucket form -->
+    <section id="viewNewBucket" class="view" hidden>
+      <h2>New Bucket</h2>
+      <form id="bucketForm" onsubmit="saveBucket(event)">
+        <label>Bucket Name
+          <input type="text" id="bucketNameInput" required placeholder="e.g. Q4 Investor Decks, Borrower Financials">
+        </label>
+        <label>Extraction Template
+          <p class="field-hint">Every document uploaded to this bucket will be extracted using this template's fields.</p>
+          <select id="bucketTemplateSelect" required onchange="previewTemplate(this.value)"></select>
+        </label>
+        <div class="create-template-link">
+          Don't have one? <a onclick="openBuilderFromBucketForm()">Build a template with AI</a>
+          or <a onclick="openManualEditorFromBucketForm()">create manually</a>
+        </div>
+        <div id="templatePreview" class="template-preview" hidden></div>
+        <div class="form-actions">
+          <button type="button" onclick="goBack()">Cancel</button>
+          <button type="submit" class="primary">Create Bucket</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Template builder (AI-assisted) -->
+    <section id="viewTemplateBuilder" class="view" hidden>
+      <div class="toolbar">
+        <div>
+          <h2>Build Template with AI</h2>
+          <p class="toolbar-sub">Describe the data you need — AI generates the extraction fields for you.</p>
+        </div>
+        <div class="toolbar-actions">
+          <button type="button" onclick="goBack()">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Step 1: Input -->
+      <div id="builderInput">
+        <div class="builder-card">
+          <label class="builder-label">
+            What data do you want to extract?
+            <span class="builder-label-hint">Be specific — mention field names, document type, and anything distinctive about where values appear.</span>
+            <textarea id="builderDesc" class="builder-textarea" rows="5"
+              placeholder="e.g. I need to pull out the company name, total revenue, net income, and reporting period from quarterly earnings reports. Revenue is usually near the top of the income statement section."></textarea>
+          </label>
+        </div>
+
+        <div class="builder-card">
+          <p class="builder-label">
+            Sample document
+            <span class="optional-tag">optional</span>
+          </p>
+          <p class="builder-label-hint">Upload a PDF example — AI will analyze its layout for more accurate field suggestions. Only the first 3 pages are sent.</p>
+          <div class="drop-area builder-drop" id="builderDropArea">
+            <div id="builderDropPrompt">
+              <svg class="drop-icon-sm" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Drop a PDF here or <label class="file-label">browse<input type="file" id="builderFileInput" accept=".pdf"></label>
+            </div>
+            <div id="builderFileLoaded" hidden>
+              <span id="builderFileInfo"></span>
+              <button type="button" class="small" onclick="clearBuilderSample()">Remove</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="builder-generate-row">
+          <button class="primary ai-btn builder-generate-btn" onclick="generateTemplate()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2L9 12l-7 1 5 5-2 7 7-4 7 4-2-7 5-5-7-1z"/></svg>
+            Generate Template
+          </button>
+        </div>
+      </div>
+
+      <!-- Step 2: Generating -->
+      <div id="builderGenerating" class="builder-card builder-generating-panel" hidden>
+        <div class="process-status">
+          <div class="process-spinner"></div>
+          <div>
+            <p class="process-main" id="builderGenStatus">Analyzing your description...</p>
+            <p class="process-sub" id="builderGenSub">This usually takes 5-15 seconds.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 3: Review & Edit -->
+      <div id="builderReview" hidden>
+        <div class="builder-success">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          Template generated — review the fields below and adjust if needed before saving.
+        </div>
+        <form id="builderForm" onsubmit="saveBuiltTemplate(event)">
+          <label>Template Name
+            <input type="text" id="builderName" required>
+          </label>
+          <label>Document Type
+            <input type="text" id="builderDocType" placeholder="e.g. Quarterly earnings report, Bank statement">
+          </label>
+          <fieldset>
+            <legend>Fields</legend>
+            <div id="builderFieldsList"></div>
+            <button type="button" class="add-field-btn" onclick="addBuilderFieldRow()">+ Add Field</button>
+          </fieldset>
+          <div class="form-actions">
+            <button type="button" onclick="showBuilderInput()">&#8592; Regenerate</button>
+            <button type="submit" class="primary">Save Template</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- Settings -->
+    <section id="viewSettings" class="view" hidden>
+      <div class="toolbar">
+        <div>
+          <h2>Settings</h2>
+          <p class="toolbar-sub">Customize the AI prompts used for extraction and template building.</p>
+        </div>
+        <div class="toolbar-actions">
+          <button onclick="goBack()">Cancel</button>
+          <button class="primary" id="settingsSaveBtn" onclick="saveSettings()">Save Changes</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-header">
+          <div>
+            <h3>Extraction Instructions <span class="prompt-badge">Runs on every document</span></h3>
+            <p class="settings-desc">
+              Sent to the AI each time it reads a document and fills in your template fields.
+              Use <code>{{fields}}</code> as a placeholder — EasyExtract replaces it with the field list from
+              your template automatically. If you leave out <code>{{fields}}</code>, the field list is appended at the end.
+            </p>
+          </div>
+          <button class="small" onclick="resetPrompt('extraction_prompt')">Reset to default</button>
+        </div>
+        <textarea id="settingsExtractionPrompt" class="prompt-textarea" spellcheck="false"></textarea>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-header">
+          <div>
+            <h3>Template Builder Instructions <span class="prompt-badge">Used in AI template builder</span></h3>
+            <p class="settings-desc">
+              Guides the AI when you click "Build with AI" to generate a new template from a plain-text description.
+              Adjust naming conventions, field style, or add domain-specific rules — for example, always use short titles
+              or always mark revenue fields as required.
+            </p>
+          </div>
+          <button class="small" onclick="resetPrompt('template_builder_prompt')">Reset to default</button>
+        </div>
+        <textarea id="settingsBuilderPrompt" class="prompt-textarea" spellcheck="false"></textarea>
+      </div>
+    </section>
+
+  </main>
+
+  <div id="debugPanel">
+    <div id="debugPanelBar" hidden>
+      <span id="debugPanelLabel">Debug</span>
+      <div class="debug-bar-actions">
+        <button onclick="toggleDebugPanel()" id="debugCollapseBtn" title="Collapse">&#9660;</button>
+        <button onclick="clearDebugPanel()" title="Clear all">&#10005;</button>
+      </div>
+    </div>
+    <div id="debugPanelMessages"></div>
+  </div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.9.155/pdf.min.mjs" type="module"></script>
+  <script src="/app.js" type="module"></script>
+</body>
+</html>

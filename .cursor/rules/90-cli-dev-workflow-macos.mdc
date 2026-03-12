@@ -1,0 +1,26 @@
+---
+description: macOS CLI workflow rules for local dev and production deploy with Wrangler.
+globs: "{package.json,wrangler.toml,.dev.vars*}"
+alwaysApply: true
+---
+
+# macOS CLI workflow rules
+
+## Local dev
+- Use Wrangler for local dev (`wrangler dev`).
+- Local secrets:
+  - place in `.dev.vars` (dotenv format)
+  - ensure `.dev.vars*` is in `.gitignore`
+- Add simple scripts in package.json:
+  - `dev`, `deploy`, `lint`, `typecheck`
+
+## Production deploy
+- Use Wrangler deploy.
+- Production secrets:
+  - set via `wrangler secret put ...` per environment
+  - do not assume local `.dev.vars` exists in production
+
+## Debugging posture
+- Provide one command to reproduce (copy/paste friendly).
+- Log correlation id per request.
+- Include clear "how to verify" steps in PR descriptions.

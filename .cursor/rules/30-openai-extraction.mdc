@@ -1,0 +1,35 @@
+---
+description: OpenAI extraction pass rules (OCR text -> structured JSON output).
+globs: "{src/services/openai.ts,src/handlers/**/*.ts,src/**/*.ts}"
+alwaysApply: true
+---
+
+# OpenAI extraction rules
+
+## Purpose
+- Use OpenAI ONLY to transform OCR text into structured output requested by the user.
+
+## Prompting rules
+- Prefer deterministic extraction:
+  - produce a JSON object that matches a declared schema
+  - never include markdown fences in the model output unless explicitly needed
+- Include in the prompt:
+  - user's extraction instructions
+  - OCR text
+  - any constraints (dates format, currency normalization, field names)
+- Implement a hard cap:
+  - if OCR text is too large, summarize or chunk BEFORE extraction (prefer chunking by pages).
+
+## Safety/quality controls
+- Validate model output as JSON (parse + schema check).
+- If parsing fails:
+  - retry once with a "return valid JSON only" repair prompt
+  - otherwise return a structured error `MODEL_OUTPUT_INVALID`
+
+## Data minimization
+- Do not send the raw file to OpenAI.
+- Send only OCR text + minimal metadata.
+
+## Secrets
+- OpenAI API key is a Worker secret.
+- Never log the key; never return it; never echo it.

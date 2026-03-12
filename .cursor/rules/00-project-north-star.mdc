@@ -1,0 +1,42 @@
+---
+description: Core rules for this repo (Worker -> Document AI OCR -> OpenAI extraction). Applies broadly.
+globs: "{**/*}"
+alwaysApply: true
+---
+
+# Project North Star
+
+## What we are building
+- A Cloudflare Worker HTTP API that:
+  1) accepts a document (PDF/image) + user instructions
+  2) calls Google Cloud Document AI (OCR) to get text
+  3) calls OpenAI to extract structured info from that OCR text
+  4) returns structured JSON to the client
+
+## Non-negotiables
+- Keep the Worker thin: do not do heavy parsing or CPU-intensive work in the Worker.
+- Prefer streaming / chunking only if necessary; otherwise keep it simple and synchronous.
+- Never commit secrets. Use Wrangler secrets / environment variables for production, `.dev.vars` for local dev.
+- Always return JSON with a stable schema and clear error objects.
+
+## Code quality expectations
+- Use TypeScript.
+- Prefer small modules with single responsibilities:
+  - `src/handlers/*` (HTTP endpoints)
+  - `src/services/documentAi.ts`
+  - `src/services/openai.ts`
+  - `src/services/auth.ts` (if needed)
+  - `src/util/*` (helpers)
+- Errors must be normalized into a single format (status, code, message, details?).
+
+## Response shape (baseline)
+- Success:
+  - `{ ok: true, data: {...}, meta: {...} }`
+- Failure:
+  - `{ ok: false, error: { code, message, details? }, meta: {...} }`
+
+## Security baseline
+- Validate content-type, size, and required fields.
+- Reject obviously invalid input early (400).
+- Add timeouts to outbound fetch calls.
+- Log minimal diagnostic info; never log secrets or raw documents.

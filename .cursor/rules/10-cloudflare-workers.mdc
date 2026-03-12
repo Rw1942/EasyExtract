@@ -1,0 +1,37 @@
+---
+description: Cloudflare Workers + Wrangler conventions, env/secrets, and limits guidance.
+globs: "{wrangler.toml,wrangler.jsonc,src/**/*.ts,src/**/*.tsx}"
+alwaysApply: true
+---
+
+# Cloudflare Workers rules
+
+## Runtime assumptions
+- This is a Cloudflare Worker (fetch handler).
+- Do NOT use Node-only APIs (fs, net, tls, process, child_process, etc.).
+- Prefer Web Platform primitives (Request/Response, fetch, crypto.subtle).
+
+## Secrets & environment variables
+- Production secrets must be stored as Worker secrets / variables (Wrangler or dashboard).
+  - Use `wrangler secret put <KEY>` for secrets.
+  - Use Worker Variables for non-secret config.
+- Local dev secrets go in `.dev.vars` (dotenv format) and must be gitignored.
+- Never hardcode API keys in code or config committed to git.
+
+## Limits & performance
+- Keep CPU work minimal (mostly IO-bound: fetch to Document AI + OpenAI).
+- Avoid large in-memory buffers if possible; prefer base64 only where required by upstream APIs.
+- Be mindful of Worker CPU limits; if we ever need more CPU, set `limits.cpu_ms` in Wrangler config.
+
+## Networking
+- All external calls are via `fetch()` with explicit timeouts using AbortController.
+- Always set:
+  - `Content-Type`
+  - `Authorization` as needed
+  - request id / correlation id header if available
+
+## Logging
+- Use structured logs (single-line JSON) and omit sensitive payloads:
+  - never log OpenAI keys
+  - never log Google service account keys
+  - avoid logging raw OCR text unless explicitly in a dev-only path

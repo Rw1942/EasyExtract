@@ -1,0 +1,88 @@
+// Job extraction — runs OCR text through OpenAI to fill a template's fields.
+import type { Env, Job, Template, TemplateField } from '../types';
+import { ok, err, uid } from '../types';
+import { extract } from '../services/openai';
+
+export async function handleExtract(req: Request, env: Env, jobId: string): Promise<Response> {
+  if (!env.OPENAI_API_KEY) {
+    return err(503, 'NOT_CONFIGURED', 'OpenAI is not configured. Add OPENAI_API_KEY to your .dev.vars file.');
+  }
+
+  const job = await env.DB.prepare('SELECT * FROM jobs WHERE id = ?').bind(jobId).first<Job>();
+  if (!job) return err(404, 'NOT_FOUND', 'Job not found');
+  if (!job.ocr_text) return err(400, 'NO_OCR_TEXT', 'Job has no OCR text yet — upload pages first');
+
+  const body = (await req.json().catch(() => ({}))) as { template_id?: string };
+
+  // Use explicit template_id or fall back to the bucket's template
+  let templateId = body.template_id;
+  if (!templateId) {
+    const bucket = await env.DB.prepare('SELECT template_id FROM buckets WHERE id = ?').bind(job.bucket_id).first<{ template_id: string }>();
+    templateId = bucket?.template_id;
+  }
+  if (!templateId) return err(400, 'VALIDATION', 'No template_id provided and bucket has none');
+
+  const template = await env.DB.prepare('SELECT * FROM templates WHERE id = ?').bind(templateId).first<Template>();
+  if (!template) return err(404, 'NOT_FOUND', 'Template not found');
+
+  const { results: fields } = await env.DB.prepare(
+    'SELECT * FROM template_fields WHERE template_id = ? ORDER BY sort_order',
+  )
+    .bind(templateId)
+    .all<TemplateField>();
+
+  if (!fields.length) return err(400, 'NO_FIELDS', 'Template has no fields defined');
+
+  const runId = uid();
+  await env.DB.prepare('INSERT INTO runs (id, job_id, template_id, status) VALUES (?, ?, ?, ?)')
+    .bind(runId, jobId, templateId, 'running')
+    .run();
+
+  await env.DB.prepare('UPDATE jobs SET status = ? WHERE id = ?').bind('extracting', jobId).run();
+
+  const promptSetting = await env.DB.prepare(
+    'SELECT value FROM settings WHERE key = ?',
+  ).bind('extraction_prompt').first<{ value: string }>();
+
+  try {
+    const result = await extract(job.ocr_text, fields, env.OPENAI_API_KEY, template.doc_type_hint, promptSetting?.value);
+
+    await env.DB.prepare('UPDATE runs SET status = ?, result = ? WHERE id = ?')
+      .bind('done', JSON.stringify(result), runId)
+      .run();
+    await env.DB.prepare('UPDATE jobs SET status = ? WHERE id = ?').bind('done', jobId).run();
+
+    return ok({ run_id: runId, result });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Extraction failed';
+    await env.DB.prepare('UPDATE runs SET status = ?, error = ? WHERE id = ?')
+      .bind('error', msg, runId)
+      .run();
+    await env.DB.prepare('UPDATE jobs SET status = ? WHERE id = ?').bind('error', jobId).run();
+
+    return err(502, 'EXTRACTION_FAILED', msg);
+  }
+}
+
+export async function handleGetJob(env: Env, jobId: string): Promise<Response> {
+  const job = await env.DB.prepare('SELECT * FROM jobs WHERE id = ?').bind(jobId).first<Job>();
+  if (!job) return err(404, 'NOT_FOUND', 'Job not found');
+
+  const { results: runs } = await env.DB.prepare(
+    'SELECT * FROM runs WHERE job_id = ? ORDER BY created_at DESC',
+  )
+    .bind(jobId)
+    .all();
+
+  const parsed = runs.map((r: Record<string, unknown>) => ({
+    ...r,
+    result: r.result ? JSON.parse(r.result as string) : null,
+  }));
+
+  return ok({ ...job, runs: parsed });
+}
+
+export async function handleDeleteJob(env: Env, jobId: string): Promise<Response> {
+  await env.DB.prepare('DELETE FROM jobs WHERE id = ?').bind(jobId).run();
+  return ok({ deleted: true });
+}
