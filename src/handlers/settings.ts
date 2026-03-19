@@ -7,6 +7,10 @@ export const DEFAULT_SETTINGS: Record<string, string> = {
   extraction_prompt: EXTRACTION_PROMPT_DEFAULT,
   template_builder_prompt: BUILDER_PROMPT_DEFAULT,
   ocr_batch_size: '16',
+  classification_mode: 'hybrid',
+  classification_auto_run_threshold: '0.86',
+  classification_openai_escalation_score: '0.78',
+  classification_openai_escalation_margin: '0.08',
 };
 
 export async function handleSettings(req: Request, env: Env): Promise<Response> {

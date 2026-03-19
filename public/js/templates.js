@@ -96,7 +96,7 @@ async function loadTemplateForEdit(id) {
 export function addFieldRow(f, containerId = 'fieldsList') {
   const div = document.createElement('div');
   div.className = 'field-row';
-  div.innerHTML = `<input type="text" placeholder="Field title" value="${esc(f?.title || '')}" class="f-title" required><input type="text" placeholder="Description" value="${esc(f?.description || '')}" class="f-desc"><select class="f-type">${['string', 'number', 'currency', 'date', 'object', 'array'].map((t) => `<option value="${t}" ${f?.type === t ? 'selected' : ''}>${t}</option>`).join('')}</select><label style="display:flex;align-items:center;gap:4px;margin:0;font-weight:normal"><input type="checkbox" class="f-req" ${f?.required ? 'checked' : ''}> Req</label><button type="button" onclick="this.closest('.field-row').remove()">&times;</button>`;
+  div.innerHTML = `<input type="text" placeholder="Field title" value="${esc(f?.title || '')}" class="f-title" required><input type="text" placeholder="Description" value="${esc(f?.description || '')}" class="f-desc"><select class="f-type">${['string', 'number', 'currency', 'date', 'object', 'array'].map((t) => `<option value="${t}" ${f?.type === t ? 'selected' : ''}>${t}</option>`).join('')}</select><label class="field-req-label"><input type="checkbox" class="f-req" ${f?.required ? 'checked' : ''}> Req</label><button type="button" onclick="this.closest('.field-row').remove()">&times;</button>`;
   document.getElementById(containerId).appendChild(div);
 }
 
@@ -403,17 +403,17 @@ export async function showTemplateDetail(id, isBack) {
 
     const fieldsEl = document.getElementById('templateDetailFields');
     const fields = t.fields || [];
-    fieldsEl.innerHTML = `<h3>Fields (${fields.length})</h3><div class="field-pills">${fields.map((f) => `<span class="field-pill ${f.required ? 'required' : ''}" title="${esc(f.description || '')}${f.type ? ` (${f.type})` : ''}">${esc(f.title)}<span style="font-size:10px;color:var(--muted);margin-left:4px">${f.type}</span></span>`).join('')}</div>`;
+    fieldsEl.innerHTML = `<h3>Fields (${fields.length})</h3><div class="field-pills">${fields.map((f) => `<span class="field-pill ${f.required ? 'required' : ''}" title="${esc(f.description || '')}${f.type ? ` (${f.type})` : ''}">${esc(f.title)}<span class="field-pill-type">${f.type}</span></span>`).join('')}</div>`;
 
     const bucketsEl = document.getElementById('templateDetailBuckets');
     const buckets = t.buckets_using || [];
-    bucketsEl.innerHTML = `<h3>Used by ${buckets.length} bucket${buckets.length !== 1 ? 's' : ''}</h3>${buckets.length ? buckets.map((b) => `<a class="bucket-link" onclick="openBucket('${b.id}')">${esc(b.name)}</a>`).join('') : '<p style="font-size:13px;color:var(--muted)">Not assigned to any buckets yet. Create a bucket to start using this template.</p>'}`;
+    bucketsEl.innerHTML = `<h3>Used by ${buckets.length} bucket${buckets.length !== 1 ? 's' : ''}</h3>${buckets.length ? buckets.map((b) => `<a class="bucket-link" onclick="openBucket('${b.id}')">${esc(b.name)}</a>`).join('') : '<p class="detail-muted">Not assigned to any buckets yet. Create a bucket to start using this template.</p>'}`;
 
     const runsEl = document.getElementById('templateDetailRuns');
     const runs = t.recent_runs || [];
     runsEl.innerHTML = runs.length
-      ? `<h3>Recent Extractions</h3><table style="width:100%;border-collapse:collapse"><thead><tr><th>File</th><th>Bucket</th><th>Status</th><th>Date</th></tr></thead><tbody>${runs.map((r) => `<tr><td style="font-size:13px">${esc(r.filename || '—')}</td><td style="font-size:13px">${esc(r.bucket_name || '—')}</td><td><span class="status-badge status-${r.status}">${STATUS_LABELS[r.status] || r.status}</span></td><td style="font-size:12px;white-space:nowrap;color:var(--muted)">${new Date(r.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td></tr>`).join('')}</tbody></table>`
-      : '<h3>Recent Extractions</h3><p style="font-size:13px;color:var(--muted)">No extractions yet. Upload documents to a bucket using this template to see results here.</p>';
+      ? `<h3>Recent Extractions</h3><table class="template-runs-table"><thead><tr><th>File</th><th>Bucket</th><th>Status</th><th>Date</th></tr></thead><tbody>${runs.map((r) => `<tr><td>${esc(r.filename || '—')}</td><td>${esc(r.bucket_name || '—')}</td><td><span class="status-badge status-${r.status}">${STATUS_LABELS[r.status] || r.status}</span></td><td class="date-cell">${new Date(r.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td></tr>`).join('')}</tbody></table>`
+      : '<h3>Recent Extractions</h3><p class="detail-muted">No extractions yet. Upload documents to a bucket using this template to see results here.</p>';
   } catch (e) {
     toast('Failed to load template: ' + e.message);
   }

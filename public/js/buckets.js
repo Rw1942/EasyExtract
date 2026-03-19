@@ -47,7 +47,7 @@ export async function showDashboard() {
     empty.hidden = true;
     grid.innerHTML = buckets.map((b) => {
       const count = b.job_count || 0;
-      return `<div class="card" onclick="openBucket('${b.id}')"><h3>${esc(b.name)}</h3><div style="margin-bottom:10px"><span class="template-tag">${esc(b.template_name || 'No template')}</span></div><div class="card-stat-row"><span class="card-stat-label">Documents</span><span class="card-stat-value">${count}</span></div><div class="card-actions"><button class="small primary" onclick="event.stopPropagation(); quickUpload('${b.id}')">Upload</button><button class="small" onclick="event.stopPropagation(); openBucket('${b.id}')">Open</button><button class="small danger" onclick="event.stopPropagation(); deleteBucket('${b.id}')">Delete</button></div></div>`;
+      return `<div class="card" onclick="openBucket('${b.id}')"><h3>${esc(b.name)}</h3><div class="card-template-row"><span class="template-tag">${esc(b.template_name || 'No template')}</span></div><div class="card-stat-row"><span class="card-stat-label">Documents</span><span class="card-stat-value">${count}</span></div><div class="card-actions"><button class="small primary" onclick="event.stopPropagation(); quickUpload('${b.id}')">Upload</button><button class="small" onclick="event.stopPropagation(); openBucket('${b.id}')">Open</button><button class="small danger" onclick="event.stopPropagation(); deleteBucket('${b.id}')">Delete</button></div></div>`;
     }).join('');
   } catch (e) {
     toast('Failed to load buckets: ' + e.message);
@@ -98,7 +98,7 @@ export function renderBucketInfoBar(data) {
   if (s.error_count) statParts.push(`<span class="stat-error">${s.error_count} failed</span>`);
   const statsHtml = statParts.length ? `<div class="bucket-stats">${s.total || 0} document${s.total !== 1 ? 's' : ''}: ${statParts.join(' · ')}</div>` : '';
 
-  infoBar.innerHTML = `<div style="flex:1"><span>Template: <strong>${esc(data.template_name || data.template_id)}</strong></span>${statsHtml}</div><div class="info-bar-actions"><a onclick="editTemplate('${data.template_id}')">Edit Fields</a><button class="small" onclick="changeBucketTemplate()">Change</button></div>`;
+  infoBar.innerHTML = `<div class="info-bar-main"><span>Template: <strong>${esc(data.template_name || data.template_id)}</strong></span>${statsHtml}</div><div class="info-bar-actions"><a onclick="editTemplate('${data.template_id}')">Edit Fields</a><button class="small" onclick="changeBucketTemplate()">Change</button></div>`;
 
   const reBtn = document.getElementById('btnReExtractAll');
   if (reBtn) reBtn.hidden = !(s.done_count || s.error_count);
@@ -191,14 +191,30 @@ async function renderJobsTable(jobs) {
   tbody.innerHTML = jobs.map((j) => {
     const expandable = j.status === 'done' || j.status === 'error';
     const canExtract = j.status === 'pending' || j.status === 'done' || j.status === 'error';
+    const suggestedTmplId = j.suggested_template_id || null;
+    const suggestedTmplName = j.suggested_template_name || null;
+    const suggestedConfidence = Number(j.classification_confidence);
+    const hasSuggestion = !!suggestedTmplId;
+    const selectedTemplateId = suggestedTmplId || defaultTmplId;
     let actions = '';
     if (canExtract) {
-      const opts = templates.map((t) => `<option value="${t.id}"${t.id === defaultTmplId ? ' selected' : ''}>${esc(t.name)}${t.id === defaultTmplId ? ' (default)' : ''}</option>`).join('');
+      const opts = templates.map((t) => {
+        const selected = t.id === selectedTemplateId ? ' selected' : '';
+        const defaultMark = t.id === defaultTmplId ? ' (default)' : '';
+        return `<option value="${t.id}"${selected}>${esc(t.name)}${defaultMark}</option>`;
+      }).join('');
       const selectHtml = `<select class="template-select" id="tmpl-select-${j.id}" onclick="event.stopPropagation()" title="Choose extraction template">${opts}</select>`;
+      const suggestionHtml = hasSuggestion
+        ? `<div class="template-suggestion">Suggested: ${esc(suggestedTmplName || 'Template')} (${Number.isFinite(suggestedConfidence) ? Math.round(suggestedConfidence * 100) : 0}%)</div>`
+        : '';
       if (j.status === 'pending') actions = `${selectHtml}<button class="small primary" onclick="event.stopPropagation(); runExtraction('${j.id}', this)">Extract</button>`;
       else actions = `${selectHtml}<button class="small" onclick="event.stopPropagation(); reRunExtraction('${j.id}', this)">Re-extract</button><button class="small" onclick="event.stopPropagation(); openReview('${j.id}')">Review</button><button class="small danger" onclick="event.stopPropagation(); deleteJob('${j.id}')">Delete</button>`;
+      actions += suggestionHtml;
     }
-    return `<tr class="job-row${expandable ? ' expandable' : ''}" ${expandable ? `onclick="toggleJobDetail('${j.id}')" data-job-id="${j.id}"` : ''}><td class="filename-cell" title="${esc(j.filename)}"><span class="job-chevron" id="chevron-${j.id}">${expandable ? '▸' : ''}</span>${esc(j.filename)}</td><td>${j.page_count ?? '—'}</td><td><span class="status-badge status-${j.status}">${STATUS_LABELS[j.status] || j.status}</span></td><td class="actions-cell">${actions}</td></tr><tr class="job-detail-row" id="detail-${j.id}"><td colspan="4" class="job-detail-cell"><div class="job-detail-wrap" id="wrap-${j.id}"><div class="job-detail-inner" id="inner-${j.id}"></div></div></td></tr>`;
+    const autoExtractBadge = Number(j.classification_auto_run) && j.status === 'done'
+      ? '<span class="meta-badge meta-badge-success">Auto-extracted</span>'
+      : '';
+    return `<tr class="job-row${expandable ? ' expandable' : ''}" ${expandable ? `onclick="toggleJobDetail('${j.id}')" data-job-id="${j.id}"` : ''}><td class="filename-cell" title="${esc(j.filename)}"><span class="job-chevron" id="chevron-${j.id}">${expandable ? '▸' : ''}</span>${esc(j.filename)}</td><td>${j.page_count ?? '—'}</td><td><span class="status-badge status-${j.status}">${STATUS_LABELS[j.status] || j.status}</span>${autoExtractBadge}</td><td class="actions-cell">${actions}</td></tr><tr class="job-detail-row" id="detail-${j.id}"><td colspan="4" class="job-detail-cell"><div class="job-detail-wrap" id="wrap-${j.id}"><div class="job-detail-inner" id="inner-${j.id}"></div></div></td></tr>`;
   }).join('');
 }
 

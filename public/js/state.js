@@ -14,6 +14,8 @@ export const state = {
   jobsRefreshTimer: null,
   expandedJobId: null,
   jobDetailCache: {},
+  templateDetailCache: {},
+  pageClassificationCache: {},
 };
 
 export async function ensureTemplatesLoaded(api) {

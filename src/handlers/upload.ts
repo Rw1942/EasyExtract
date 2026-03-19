@@ -2,6 +2,8 @@
 import type { Env } from '../types';
 import { ok, err, uid } from '../types';
 import { ocrPages } from '../services/documentAi';
+import { classifyJob } from '../services/classification';
+import { runExtractionForJob } from './extract';
 
 const OCR_BATCH_SIZE_DEFAULT = 16;
 const OCR_BATCH_SIZE_MAX = 16;
@@ -39,6 +41,8 @@ async function persistPreviewPage(env: Env, jobId: string, firstPage: string | u
 async function processOcrInBackground(
   env: Env,
   jobId: string,
+  bucketId: string,
+  filename: string,
   pages: string[],
   batchSize: number,
 ): Promise<void> {
@@ -48,6 +52,17 @@ async function processOcrInBackground(
     await env.DB.prepare('UPDATE jobs SET status = ?, ocr_text = ? WHERE id = ?')
       .bind('pending', text, jobId)
       .run();
+
+    const decision = await classifyJob(env, {
+      jobId,
+      bucketId,
+      filename,
+      ocrText: text,
+    });
+
+    if (decision?.autoRun) {
+      await runExtractionForJob(env, jobId, decision.suggestedTemplateId, 'auto_classification');
+    }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'OCR failed';
     console.error(`OCR job failed: ${jobId}: ${msg}`);
@@ -87,7 +102,7 @@ export async function handleUpload(
   await persistPreviewPage(env, jobId, body.pages[0]);
 
   ctx.waitUntil(
-    processOcrInBackground(env, jobId, body.pages, batchSize),
+    processOcrInBackground(env, jobId, bucketId, body.filename, body.pages, batchSize),
   );
 
   return ok({

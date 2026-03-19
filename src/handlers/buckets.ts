@@ -1,6 +1,7 @@
 // Bucket CRUD — each bucket groups documents of one type, processed with a shared template.
 import type { Env, Bucket, Job } from '../types';
 import { ok, err, uid } from '../types';
+import { ensureJobClassificationTable } from '../services/classification';
 
 export async function handleBuckets(req: Request, env: Env, path: string): Promise<Response> {
   const segments = path.replace('/api/buckets', '').split('/').filter(Boolean);
@@ -26,6 +27,8 @@ async function listBuckets(env: Env): Promise<Response> {
 }
 
 async function getBucket(env: Env, id: string): Promise<Response> {
+  await ensureJobClassificationTable(env);
+
   const bucket = await env.DB.prepare(
     `SELECT b.*, t.name as template_name
      FROM buckets b LEFT JOIN templates t ON b.template_id = t.id
@@ -36,7 +39,17 @@ async function getBucket(env: Env, id: string): Promise<Response> {
   if (!bucket) return err(404, 'NOT_FOUND', 'Bucket not found');
 
   const { results: jobs } = await env.DB.prepare(
-    'SELECT * FROM jobs WHERE bucket_id = ? ORDER BY created_at DESC',
+    `SELECT j.*,
+       jc.suggested_template_id,
+       st.name as suggested_template_name,
+       jc.confidence as classification_confidence,
+       jc.source as classification_source,
+       jc.reason as classification_reason,
+       jc.auto_run as classification_auto_run
+     FROM jobs j
+     LEFT JOIN job_classifications jc ON jc.job_id = j.id
+     LEFT JOIN templates st ON st.id = jc.suggested_template_id
+     WHERE j.bucket_id = ? ORDER BY j.created_at DESC`,
   )
     .bind(id)
     .all<Job>();
