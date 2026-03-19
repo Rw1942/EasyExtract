@@ -636,9 +636,9 @@ async function handleFiles(files) {
       // Transition to OCR step after a brief moment so the user sees the upload step
       const ocrTimer = setTimeout(() => {
         pcStep(1, 'done');
-        pcStep(2, 'active', 'Google Vision scanning — this can take 10–30 seconds…');
+        pcStep(2, 'active', 'Queued for OCR — processing in background…');
         document.getElementById('pcBar').style.transition = 'width 8s ease-out';
-        pcProgress(base + slot * 0.92);
+        pcProgress(base + slot * 0.9);
       }, 800);
 
       let result;
@@ -652,10 +652,10 @@ async function handleFiles(files) {
         document.getElementById('pcBar').style.transition = 'width 0.3s ease';
       }
 
-      debugLog(`OCR complete — ${result.page_count} pages, ${(result.ocr_length / 1024).toFixed(0)} KB of text`, 'success');
+      debugLog(`OCR started in background — job ${result.job_id} (${result.page_count} pages)`, 'success');
 
       pcStep(1, 'done');
-      pcStep(2, 'done', `${result.page_count} pages · ${(result.ocr_length / 1024).toFixed(0)} KB extracted`);
+      pcStep(2, 'done', `${result.page_count} pages queued`);
       pcProgress(base + slot);
 
     } catch (e) {
@@ -689,8 +689,10 @@ async function rasterizePdf(file, onProgress) {
   }
   debugLog(`PDF opened — ${pdf.numPages} page(s)`);
   const pages = [];
-  const DPI = 200;
+  const DPI = 180;
   const SCALE = DPI / 72;
+  const MAX_DIMENSION = 2000;
+  const JPEG_QUALITY = 0.72;
 
   for (let i = 1; i <= pdf.numPages; i++) {
     let page;
@@ -700,14 +702,16 @@ async function rasterizePdf(file, onProgress) {
       debugLog(`Failed to load page ${i}: ${e.message}`, 'error');
       throw e;
     }
-    const viewport = page.getViewport({ scale: SCALE });
+    const baseViewport = page.getViewport({ scale: SCALE });
+    const dimensionScale = Math.min(1, MAX_DIMENSION / Math.max(baseViewport.width, baseViewport.height));
+    const viewport = page.getViewport({ scale: SCALE * dimensionScale });
     debugLog(`Page ${i}/${pdf.numPages}: ${Math.round(viewport.width)}×${Math.round(viewport.height)}px — rendering...`);
     let blob;
     try {
       const canvas = new OffscreenCanvas(viewport.width, viewport.height);
       const ctx = canvas.getContext('2d');
       await page.render({ canvasContext: ctx, viewport }).promise;
-      blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.85 });
+      blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: JPEG_QUALITY });
     } catch (e) {
       debugLog(`Failed to rasterize page ${i}: ${e.message}`, 'error');
       throw e;
@@ -1250,6 +1254,7 @@ const PROMPT_DEFAULTS = {
     '- required=true only for fields reliably present in every document of this type',
   ].join('\n'),
 };
+const OCR_BATCH_SIZE_DEFAULT = 16;
 
 async function showSettings() {
   navStack.push('settings');
@@ -1261,6 +1266,8 @@ async function showSettings() {
       settings.extraction_prompt || PROMPT_DEFAULTS.extraction_prompt;
     document.getElementById('settingsBuilderPrompt').value =
       settings.template_builder_prompt || PROMPT_DEFAULTS.template_builder_prompt;
+    document.getElementById('settingsOcrBatchSize').value =
+      Number.parseInt(settings.ocr_batch_size, 10) || OCR_BATCH_SIZE_DEFAULT;
   } catch (e) {
     toast('Failed to load settings: ' + e.message);
   }
@@ -1270,14 +1277,21 @@ async function saveSettings() {
   const btn = document.getElementById('settingsSaveBtn');
   btn.disabled = true;
   btn.textContent = 'Saving…';
+  const rawBatchSize = Number.parseInt(document.getElementById('settingsOcrBatchSize').value, 10);
+  const ocrBatchSize = Number.isFinite(rawBatchSize)
+    ? Math.min(16, Math.max(1, rawBatchSize))
+    : OCR_BATCH_SIZE_DEFAULT;
+
   try {
     await api('/settings', {
       method: 'PUT',
       body: JSON.stringify({
         extraction_prompt: document.getElementById('settingsExtractionPrompt').value,
         template_builder_prompt: document.getElementById('settingsBuilderPrompt').value,
+        ocr_batch_size: String(ocrBatchSize),
       }),
     });
+    document.getElementById('settingsOcrBatchSize').value = ocrBatchSize;
     toast('Settings saved!', 3000, 'success');
   } catch (e) {
     toast('Failed to save settings: ' + e.message);

@@ -15,15 +15,25 @@ interface VisionResponse {
 export async function ocrPages(
   pages: string[],
   env: Env,
+  batchSize = BATCH_LIMIT,
 ): Promise<{ text: string; pageCount: number }> {
-  const token = await getAccessToken(env.GCP_SA_KEY);
-  const texts: string[] = [];
-
-  for (let i = 0; i < pages.length; i += BATCH_LIMIT) {
-    const batch = pages.slice(i, i + BATCH_LIMIT);
-    const batchTexts = await ocrBatch(batch, token, env.GCP_PROJECT_ID);
-    texts.push(...batchTexts);
+  if (!pages.length) {
+    return { text: '', pageCount: 0 };
   }
+
+  // Vision API allows a max of 16 images per annotate request.
+  const effectiveBatchSize = Math.max(1, Math.min(BATCH_LIMIT, Math.floor(batchSize)));
+  const token = await getAccessToken(env.GCP_SA_KEY);
+  const batches: string[][] = [];
+
+  for (let i = 0; i < pages.length; i += effectiveBatchSize) {
+    batches.push(pages.slice(i, i + effectiveBatchSize));
+  }
+
+  const results = await Promise.all(
+    batches.map((batch) => ocrBatch(batch, token, env.GCP_PROJECT_ID)),
+  );
+  const texts = results.flat();
 
   return {
     text: texts.join('\n\n--- Page Break ---\n\n'),

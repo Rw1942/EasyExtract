@@ -345,6 +345,31 @@ GCP_PROJECT_ID=your-project-id</pre>
       <div class="settings-section">
         <div class="settings-section-header">
           <div>
+            <h3>OCR Performance</h3>
+            <p class="settings-desc">
+              Controls how many pages are sent per Google Vision OCR request.
+              Lower values can reduce per-request payload size; higher values can improve throughput.
+            </p>
+          </div>
+        </div>
+        <label>Pages Per OCR Batch
+          <input
+            type="number"
+            id="settingsOcrBatchSize"
+            min="1"
+            max="16"
+            step="1"
+            inputmode="numeric"
+          >
+        </label>
+        <p class="settings-desc">
+          Recommended starting point: <code>8</code> for faster first results on large files, or <code>16</code> for maximum throughput on stable connections.
+        </p>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-header">
+          <div>
             <h3>Template Builder Instructions <span class="prompt-badge">Used in AI template builder</span></h3>
             <p class="settings-desc">
               Guides the AI when you click "Build with AI" to generate a new template from a plain-text description.

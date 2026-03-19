@@ -1,4 +1,4 @@
-// Settings CRUD — stores per-user overrides for extraction/builder AI prompts.
+// Settings CRUD — stores per-user overrides for prompts and OCR tuning.
 import type { Env } from '../types';
 import { ok, err } from '../types';
 import { EXTRACTION_PROMPT_DEFAULT, BUILDER_PROMPT_DEFAULT } from '../prompts';
@@ -6,6 +6,7 @@ import { EXTRACTION_PROMPT_DEFAULT, BUILDER_PROMPT_DEFAULT } from '../prompts';
 export const DEFAULT_SETTINGS: Record<string, string> = {
   extraction_prompt: EXTRACTION_PROMPT_DEFAULT,
   template_builder_prompt: BUILDER_PROMPT_DEFAULT,
+  ocr_batch_size: '16',
 };
 
 export async function handleSettings(req: Request, env: Env): Promise<Response> {

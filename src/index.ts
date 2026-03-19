@@ -17,7 +17,7 @@ function checkServices(env: Env) {
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
 
@@ -48,7 +48,7 @@ export default {
       // POST /api/buckets/:id/upload
       const uploadMatch = path.match(/^\/api\/buckets\/([^/]+)\/upload$/);
       if (uploadMatch && request.method === 'POST') {
-        res = await handleUpload(request, env, uploadMatch[1]);
+        res = await handleUpload(request, env, uploadMatch[1], ctx);
         return corsWrap(res);
       }
 
