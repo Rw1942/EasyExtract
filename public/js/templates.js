@@ -254,13 +254,27 @@ async function loadBuilderSample(file) {
   prompt.hidden = true;
   loaded.hidden = false;
   try {
-    const allPages = await window.rasterizePdf(file);
-    builderPages = allPages.slice(0, 3);
+    if (file.type === 'application/pdf') {
+      const allPages = await window.rasterizePdf(file);
+      builderPages = allPages.slice(0, 3);
+    } else {
+      builderPages = [await fileToBase64(file)];
+    }
     info.textContent = `${file.name} (${builderPages.length} page${builderPages.length !== 1 ? 's' : ''} ready)`;
   } catch (e) {
     info.textContent = `Failed to load: ${e.message}`;
     builderPages = [];
   }
+}
+
+async function fileToBase64(file) {
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsDataURL(file);
+  });
+  return String(dataUrl).split(',')[1];
 }
 
 export function clearBuilderSample() {
@@ -416,7 +430,9 @@ export function initTemplateDomHandlers() {
       e.preventDefault();
       builderDropArea.classList.remove('dragover');
       const file = e.dataTransfer.files[0];
-      if (file?.type === 'application/pdf') await loadBuilderSample(file);
+      if (file && (file.type === 'application/pdf' || file.type.startsWith('image/'))) {
+        await loadBuilderSample(file);
+      }
     });
   }
 

@@ -156,8 +156,8 @@
       <div id="uploadZone" class="upload-zone" hidden>
         <div class="drop-area" id="dropArea">
           <svg class="drop-icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-          <p>Drop PDF files here or <label class="file-label">browse<input type="file" id="fileInput" accept=".pdf" multiple></label></p>
-          <span class="drop-hint">Multi-page PDFs supported — upload as many as you need</span>
+          <p>Drop document files here or <label class="file-label">browse<input type="file" id="fileInput" accept=".pdf,image/*" multiple></label></p>
+          <span class="drop-hint">PDFs and images supported — upload as many as you need</span>
         </div>
       </div>
 
@@ -389,7 +389,7 @@
           <div class="drop-area builder-drop" id="builderDropArea">
             <div id="builderDropPrompt">
               <svg class="drop-icon-sm" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              Drop a PDF here or <label class="file-label">browse<input type="file" id="builderFileInput" accept=".pdf"></label>
+              Drop a PDF or image here or <label class="file-label">browse<input type="file" id="builderFileInput" accept=".pdf,image/*"></label>
             </div>
             <div id="builderFileLoaded" hidden>
               <span id="builderFileInfo"></span>

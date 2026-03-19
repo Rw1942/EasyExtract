@@ -267,14 +267,16 @@ export async function handleFiles(files) {
     return;
   }
 
-  const pdfFiles = Array.from(files).filter((f) => f.type === 'application/pdf');
-  if (!pdfFiles.length) { toast('Please upload PDF files (.pdf format).'); return; }
+  const docFiles = Array.from(files).filter((f) => (
+    f.type === 'application/pdf' || f.type.startsWith('image/')
+  ));
+  if (!docFiles.length) { toast('Please upload PDF or image files.'); return; }
 
   document.getElementById('uploadZone').hidden = true;
-  const fileCount = pdfFiles.length;
+  const fileCount = docFiles.length;
 
   for (let i = 0; i < fileCount; i += 1) {
-    const file = pdfFiles[i];
+    const file = docFiles[i];
     const label = fileCount > 1 ? `${file.name} (${i + 1} of ${fileCount})` : file.name;
     const base = (i / fileCount) * 100;
     const slot = 100 / fileCount;
@@ -284,10 +286,12 @@ export async function handleFiles(files) {
     pcProgress(base + slot * 0.02);
 
     try {
-      const pages = await rasterizePdf(file, (pg, total) => {
-        pcStep(0, 'active', `Page ${pg} of ${total}`);
-        pcProgress(base + (pg / total) * slot * 0.5);
-      });
+      const pages = file.type === 'application/pdf'
+        ? await rasterizePdf(file, (pg, total) => {
+          pcStep(0, 'active', `Page ${pg} of ${total}`);
+          pcProgress(base + (pg / total) * slot * 0.5);
+        })
+        : [await fileToBase64(file)];
 
       pcStep(0, 'done', `${pages.length} page${pages.length !== 1 ? 's' : ''}`);
       pcStep(1, 'active', `${(JSON.stringify({ filename: file.name, pages }).length / 1024 / 1024).toFixed(1)} MB`);
@@ -327,6 +331,16 @@ export async function handleFiles(files) {
   fileInput.value = '';
   pcHide();
   await openBucket(state.currentBucket.id, true);
+}
+
+async function fileToBase64(file) {
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsDataURL(file);
+  });
+  return String(dataUrl).split(',')[1];
 }
 
 export async function rasterizePdf(file, onProgress) {
