@@ -41,16 +41,17 @@ export async function runExtractionForJob(
   const job = await env.DB.prepare('SELECT * FROM jobs WHERE id = ?').bind(jobId).first<Job>();
   if (!job) throw new ApiError(404, 'NOT_FOUND', 'Job not found');
   if (!job.ocr_text) throw new ApiError(400, 'NO_OCR_TEXT', 'Job has no OCR text yet — upload pages first');
+  await ensureJobClassificationTable(env);
 
   let resolvedTemplateId = templateId;
   if (!resolvedTemplateId) {
-    const bucket = await env.DB.prepare('SELECT template_id FROM buckets WHERE id = ?')
-      .bind(job.bucket_id)
-      .first<{ template_id: string }>();
-    resolvedTemplateId = bucket?.template_id;
+    const predicted = await env.DB.prepare(
+      'SELECT suggested_template_id FROM job_classifications WHERE job_id = ?',
+    ).bind(jobId).first<{ suggested_template_id: string }>();
+    resolvedTemplateId = predicted?.suggested_template_id;
   }
   if (!resolvedTemplateId) {
-    throw new ApiError(400, 'VALIDATION', 'No template_id provided and bucket has none');
+    throw new ApiError(400, 'NO_DEFAULT_TEMPLATE', 'No default template predicted for this document. Select a template and retry.');
   }
 
   const template = await env.DB.prepare('SELECT * FROM templates WHERE id = ?')
@@ -122,20 +123,30 @@ export async function handleGetJob(env: Env, jobId: string): Promise<Response> {
   await ensureJobClassificationTable(env);
 
   const job = await env.DB.prepare(
-    `SELECT j.*, b.name as bucket_name, b.template_id as bucket_template_id,
-            t.name as bucket_template_name, p.preview_page,
+    `SELECT j.*, b.name as bucket_name, p.preview_page,
             jc.suggested_template_id,
             st.name as suggested_template_name,
             jc.confidence as classification_confidence,
             jc.source as classification_source,
             jc.reason as classification_reason,
-            jc.auto_run as classification_auto_run
+            jc.auto_run as classification_auto_run,
+            lr.template_id as latest_run_template_id,
+            lrt.name as latest_run_template_name,
+            COALESCE(lr.template_id, jc.suggested_template_id) as effective_template_id,
+            COALESCE(lrt.name, st.name) as effective_template_name
      FROM jobs j
      LEFT JOIN buckets b ON j.bucket_id = b.id
-     LEFT JOIN templates t ON b.template_id = t.id
      LEFT JOIN job_previews p ON p.job_id = j.id
      LEFT JOIN job_classifications jc ON jc.job_id = j.id
      LEFT JOIN templates st ON st.id = jc.suggested_template_id
+     LEFT JOIN runs lr ON lr.id = (
+       SELECT r2.id
+       FROM runs r2
+       WHERE r2.job_id = j.id
+       ORDER BY r2.created_at DESC
+       LIMIT 1
+     )
+     LEFT JOIN templates lrt ON lrt.id = lr.template_id
      WHERE j.id = ?`,
   ).bind(jobId).first<Job & Record<string, unknown>>();
   if (!job) return err(404, 'NOT_FOUND', 'Job not found');
@@ -169,17 +180,28 @@ export async function handleListJobs(env: Env, url: URL): Promise<Response> {
   const to = url.searchParams.get('to');
 
   let sql = [
-    'SELECT j.*, b.name as bucket_name, b.template_id as template_id, t.name as template_name,',
+    'SELECT j.*, b.name as bucket_name,',
+    'lr.template_id as latest_run_template_id,',
+    'lrt.name as latest_run_template_name,',
+    'COALESCE(lr.template_id, jc.suggested_template_id) as effective_template_id,',
+    'COALESCE(lrt.name, st.name) as effective_template_name,',
     'CASE WHEN p.job_id IS NULL THEN 0 ELSE 1 END AS has_preview,',
     'jc.suggested_template_id, st.name as suggested_template_name,',
     'jc.confidence as classification_confidence, jc.source as classification_source,',
     'jc.reason as classification_reason, jc.auto_run as classification_auto_run',
     'FROM jobs j',
     'LEFT JOIN buckets b ON j.bucket_id = b.id',
-    'LEFT JOIN templates t ON b.template_id = t.id',
     'LEFT JOIN job_previews p ON p.job_id = j.id',
     'LEFT JOIN job_classifications jc ON jc.job_id = j.id',
     'LEFT JOIN templates st ON st.id = jc.suggested_template_id',
+    'LEFT JOIN runs lr ON lr.id = (',
+    '  SELECT r2.id',
+    '  FROM runs r2',
+    '  WHERE r2.job_id = j.id',
+    '  ORDER BY r2.created_at DESC',
+    '  LIMIT 1',
+    ')',
+    'LEFT JOIN templates lrt ON lrt.id = lr.template_id',
   ].join(' ');
   const conditions: string[] = [];
   const binds: string[] = [];
@@ -187,7 +209,7 @@ export async function handleListJobs(env: Env, url: URL): Promise<Response> {
   if (status) { conditions.push('j.status = ?'); binds.push(status); }
   if (search) { conditions.push('j.filename LIKE ?'); binds.push(`%${search}%`); }
   if (bucketId) { conditions.push('j.bucket_id = ?'); binds.push(bucketId); }
-  if (templateId) { conditions.push('b.template_id = ?'); binds.push(templateId); }
+  if (templateId) { conditions.push('COALESCE(lr.template_id, jc.suggested_template_id) = ?'); binds.push(templateId); }
   if (from) { conditions.push('j.created_at >= ?'); binds.push(from); }
   if (to) { conditions.push('j.created_at <= ?'); binds.push(to); }
   if (conditions.length) sql += ' WHERE ' + conditions.join(' AND ');

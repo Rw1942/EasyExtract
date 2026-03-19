@@ -30,9 +30,16 @@ async function getTemplate(env: Env, id: string): Promise<Response> {
     .bind(id)
     .all<TemplateField>();
 
-  // Buckets using this template
+  // Buckets that have historically used this template in extraction runs
   const { results: buckets_using } = await env.DB.prepare(
-    'SELECT id, name FROM buckets WHERE template_id = ?',
+    `SELECT b.id, b.name, COUNT(*) as run_count, MAX(r.created_at) as last_used_at
+     FROM runs r
+     JOIN jobs j ON j.id = r.job_id
+     JOIN buckets b ON b.id = j.bucket_id
+     WHERE r.template_id = ?
+     GROUP BY b.id, b.name
+     ORDER BY run_count DESC, last_used_at DESC
+     LIMIT 20`,
   ).bind(id).all();
 
   // Recent extraction runs using this template (last 20)
@@ -108,6 +115,14 @@ async function updateTemplate(req: Request, env: Env, id: string): Promise<Respo
 }
 
 async function deleteTemplate(env: Env, id: string): Promise<Response> {
-  await env.DB.prepare('DELETE FROM templates WHERE id = ?').bind(id).run();
-  return ok({ deleted: true });
+  try {
+    await env.DB.prepare('DELETE FROM templates WHERE id = ?').bind(id).run();
+    return ok({ deleted: true });
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+    if (message.toLowerCase().includes('foreign key')) {
+      return err(409, 'TEMPLATE_IN_USE', 'Template cannot be deleted because it is referenced by existing runs or classifications.');
+    }
+    throw e;
+  }
 }

@@ -1,4 +1,4 @@
-// Bucket CRUD — each bucket groups documents of one type, processed with a shared template.
+// Bucket CRUD — buckets group related documents for upload, review, and extraction workflows.
 import type { Env, Bucket, Job } from '../types';
 import { ok, err, uid } from '../types';
 import { ensureJobClassificationTable } from '../services/classification';
@@ -18,9 +18,9 @@ export async function handleBuckets(req: Request, env: Env, path: string): Promi
 
 async function listBuckets(env: Env): Promise<Response> {
   const { results } = await env.DB.prepare(
-    `SELECT b.*, t.name as template_name,
+    `SELECT b.*,
       (SELECT COUNT(*) FROM jobs WHERE bucket_id = b.id) as job_count
-     FROM buckets b LEFT JOIN templates t ON b.template_id = t.id
+     FROM buckets b
      ORDER BY b.created_at DESC`,
   ).all();
   return ok(results);
@@ -30,12 +30,10 @@ async function getBucket(env: Env, id: string): Promise<Response> {
   await ensureJobClassificationTable(env);
 
   const bucket = await env.DB.prepare(
-    `SELECT b.*, t.name as template_name
-     FROM buckets b LEFT JOIN templates t ON b.template_id = t.id
-     WHERE b.id = ?`,
+    `SELECT * FROM buckets WHERE id = ?`,
   )
     .bind(id)
-    .first<Bucket & { template_name: string }>();
+    .first<Bucket>();
   if (!bucket) return err(404, 'NOT_FOUND', 'Bucket not found');
 
   const { results: jobs } = await env.DB.prepare(
@@ -70,19 +68,17 @@ async function getBucket(env: Env, id: string): Promise<Response> {
 async function createBucket(req: Request, env: Env): Promise<Response> {
   const body = (await req.json()) as {
     name: string;
-    template_id: string;
+    template_id?: string;
     settings?: Record<string, unknown>;
     auto_route_rules?: Array<{ keyword: string; bucket_name: string }>;
   };
 
-  if (!body.name || !body.template_id) return err(400, 'VALIDATION', 'name and template_id are required');
-
-  const tmpl = await env.DB.prepare('SELECT id FROM templates WHERE id = ?').bind(body.template_id).first();
-  if (!tmpl) return err(400, 'VALIDATION', 'Template not found');
+  if (!body.name || !body.name.trim()) return err(400, 'VALIDATION', 'name is required');
+  if (body.template_id) return err(400, 'VALIDATION', 'template_id is no longer supported on buckets');
 
   const id = uid();
-  await env.DB.prepare('INSERT INTO buckets (id, name, template_id, settings, auto_route_rules) VALUES (?, ?, ?, ?, ?)')
-    .bind(id, body.name, body.template_id, body.settings ? JSON.stringify(body.settings) : null, body.auto_route_rules ? JSON.stringify(body.auto_route_rules) : null)
+  await env.DB.prepare('INSERT INTO buckets (id, name, settings, auto_route_rules) VALUES (?, ?, ?, ?)')
+    .bind(id, body.name.trim(), body.settings ? JSON.stringify(body.settings) : null, body.auto_route_rules ? JSON.stringify(body.auto_route_rules) : null)
     .run();
 
   return ok({ id });
@@ -92,18 +88,43 @@ async function updateBucket(req: Request, env: Env, id: string): Promise<Respons
   const bucket = await env.DB.prepare('SELECT id FROM buckets WHERE id = ?').bind(id).first();
   if (!bucket) return err(404, 'NOT_FOUND', 'Bucket not found');
 
-  const body = (await req.json()) as { template_id?: string; name?: string };
-  if (!body.template_id && !body.name) return err(400, 'VALIDATION', 'template_id or name is required');
-
-  if (body.name) {
-    await env.DB.prepare('UPDATE buckets SET name = ? WHERE id = ?').bind(body.name, id).run();
+  const body = (await req.json()) as {
+    template_id?: string;
+    name?: string;
+    settings?: Record<string, unknown> | null;
+    auto_route_rules?: Array<{ keyword: string; bucket_name: string }> | null;
+  };
+  if (Object.prototype.hasOwnProperty.call(body, 'template_id')) {
+    return err(400, 'VALIDATION', 'template_id is no longer supported on buckets');
   }
 
-  if (body.template_id) {
-    const tmpl = await env.DB.prepare('SELECT id FROM templates WHERE id = ?').bind(body.template_id).first();
-    if (!tmpl) return err(400, 'VALIDATION', 'Template not found');
-    await env.DB.prepare('UPDATE buckets SET template_id = ? WHERE id = ?').bind(body.template_id, id).run();
+  const hasName = Object.prototype.hasOwnProperty.call(body, 'name');
+  const hasSettings = Object.prototype.hasOwnProperty.call(body, 'settings');
+  const hasRules = Object.prototype.hasOwnProperty.call(body, 'auto_route_rules');
+  if (!hasName && !hasSettings && !hasRules) {
+    return err(400, 'VALIDATION', 'name, settings, or auto_route_rules is required');
   }
+  if (hasName && (!body.name || !body.name.trim())) {
+    return err(400, 'VALIDATION', 'name must be a non-empty string');
+  }
+
+  const updates: string[] = [];
+  const binds: Array<string | null> = [];
+
+  if (hasName) {
+    updates.push('name = ?');
+    binds.push(body.name!.trim());
+  }
+  if (hasSettings) {
+    updates.push('settings = ?');
+    binds.push(body.settings ? JSON.stringify(body.settings) : null);
+  }
+  if (hasRules) {
+    updates.push('auto_route_rules = ?');
+    binds.push(body.auto_route_rules ? JSON.stringify(body.auto_route_rules) : null);
+  }
+
+  await env.DB.prepare(`UPDATE buckets SET ${updates.join(', ')} WHERE id = ?`).bind(...binds, id).run();
 
   return ok({ updated: true });
 }

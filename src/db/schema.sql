@@ -21,11 +21,9 @@ CREATE TABLE IF NOT EXISTS template_fields (
 CREATE TABLE IF NOT EXISTS buckets (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
-  template_id TEXT NOT NULL,
   settings TEXT,
   auto_route_rules TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  FOREIGN KEY (template_id) REFERENCES templates(id)
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS jobs (

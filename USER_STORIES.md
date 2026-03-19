@@ -6,7 +6,7 @@ This file is now a lightweight product reference for the current app.
 
 ## Core User Flows
 - Create a template (manual or AI builder)
-- Create a bucket and assign a template
+- Create a bucket
 - Upload PDFs or document images
 - Run extraction and review results
 - Export results to CSV

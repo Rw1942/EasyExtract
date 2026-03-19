@@ -116,7 +116,7 @@
       <div class="toolbar">
         <div>
           <h2>Buckets</h2>
-          <p class="toolbar-sub">Organize your documents by type — each bucket extracts data using a template you choose.</p>
+          <p class="toolbar-sub">Organize your documents by workflow or source, then choose templates per document during extraction.</p>
         </div>
         <div class="toolbar-actions">
           <button class="ai-btn" onclick="showTemplateBuilder()">
@@ -342,15 +342,7 @@
         <label>Bucket Name
           <input type="text" id="bucketNameInput" required placeholder="e.g. Q4 Investor Decks, Borrower Financials">
         </label>
-        <label>Extraction Template
-          <p class="field-hint">This template's fields will be used by default when extracting documents in this bucket. You can always override it per file.</p>
-          <select id="bucketTemplateSelect" required onchange="previewTemplate(this.value)"></select>
-        </label>
-        <div class="create-template-link">
-          Don't have one? <a onclick="openBuilderFromBucketForm()">Build a template with AI</a>
-          or <a onclick="openManualEditorFromBucketForm()">create manually</a>
-        </div>
-        <div id="templatePreview" class="template-preview" hidden></div>
+        <p class="field-hint">Templates are selected per document when you extract. Buckets no longer carry a default template.</p>
         <div class="form-actions">
           <button type="button" onclick="goBack()">Cancel</button>
           <button type="submit" class="primary">Create Bucket</button>

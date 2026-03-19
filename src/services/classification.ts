@@ -24,6 +24,7 @@ const SETTINGS_DEFAULTS = {
 const NANO_MODEL_PRIMARY = 'gpt-5.4-nano';
 const NANO_MODEL_FALLBACK = 'gpt-5-nano';
 const OCR_SNIPPET_LIMIT = 20000;
+const CANDIDATE_LIMIT = 11;
 
 interface TemplateCandidate {
   id: string;
@@ -106,12 +107,16 @@ async function loadSettings(env: Env): Promise<ParsedSettings> {
 }
 
 async function loadCandidates(env: Env, bucketId: string): Promise<TemplateCandidate[]> {
-  const bucketTemplate = await env.DB.prepare(
-    `SELECT t.id, t.name, t.doc_type_hint
-     FROM buckets b
-     JOIN templates t ON t.id = b.template_id
-     WHERE b.id = ?`,
-  ).bind(bucketId).first<{ id: string; name: string; doc_type_hint: string | null }>();
+  const { results: sameBucketRecentRuns } = await env.DB.prepare(
+    `SELECT t.id, t.name, t.doc_type_hint, MAX(r.created_at) AS last_used_at
+     FROM runs r
+     JOIN jobs j ON j.id = r.job_id
+     JOIN templates t ON t.id = r.template_id
+     WHERE j.bucket_id = ?
+     GROUP BY t.id
+     ORDER BY last_used_at DESC
+     LIMIT 40`,
+  ).bind(bucketId).all<{ id: string; name: string; doc_type_hint: string | null }>();
 
   const { results: recentRuns } = await env.DB.prepare(
     `SELECT t.id, t.name, t.doc_type_hint, MAX(r.created_at) AS last_used_at
@@ -122,20 +127,26 @@ async function loadCandidates(env: Env, bucketId: string): Promise<TemplateCandi
      LIMIT 40`,
   ).all<{ id: string; name: string; doc_type_hint: string | null }>();
 
+  const { results: newestTemplates } = await env.DB.prepare(
+    `SELECT id, name, doc_type_hint
+     FROM templates
+     ORDER BY created_at DESC
+     LIMIT 40`,
+  ).all<{ id: string; name: string; doc_type_hint: string | null }>();
+
   const selected: Array<{ id: string; name: string; doc_type_hint: string | null }> = [];
   const seen = new Set<string>();
 
-  if (bucketTemplate) {
-    selected.push(bucketTemplate);
-    seen.add(bucketTemplate.id);
-  }
-
-  for (const row of recentRuns) {
-    if (seen.has(row.id)) continue;
-    if (selected.length >= 11) break;
+  const pushUnique = (row: { id: string; name: string; doc_type_hint: string | null }) => {
+    if (seen.has(row.id)) return;
+    if (selected.length >= CANDIDATE_LIMIT) return;
     selected.push(row);
     seen.add(row.id);
-  }
+  };
+
+  sameBucketRecentRuns.forEach(pushUnique);
+  recentRuns.forEach(pushUnique);
+  newestTemplates.forEach(pushUnique);
 
   if (!selected.length) return [];
 

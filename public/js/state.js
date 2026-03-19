@@ -5,7 +5,6 @@ export const state = {
   viewingTemplateId: null,
   navStack: ['home'],
   afterTemplateSaved: null,
-  pendingTemplateSelect: null,
   pollingBucketId: null,
   allTemplatesCache: null,
   jobsCache: null,

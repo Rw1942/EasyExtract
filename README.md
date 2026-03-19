@@ -70,6 +70,16 @@ npm run typecheck    # TypeScript check
 npm run deploy:safe  # production deploy with health validation
 ```
 
+## One-Time Migration (Existing Databases)
+If your database was created before bucket template defaults were removed, run this once first:
+
+```bash
+npm run db:migrate:remove-bucket-template
+npm run db:migrate
+```
+
+This preserves existing bucket rows and removes the legacy bucket-level `template_id` column.
+
 ## Troubleshooting
 - `Missing required secret`: run `npx wrangler secret put <NAME>`
 - `no such table`: ensure your D1 DB is created and `database_id` is correct in `wrangler.toml`

@@ -47,7 +47,7 @@ export async function showDashboard() {
     empty.hidden = true;
     grid.innerHTML = buckets.map((b) => {
       const count = b.job_count || 0;
-      return `<div class="card" onclick="openBucket('${b.id}')"><h3>${esc(b.name)}</h3><div class="card-template-row"><span class="template-tag">${esc(b.template_name || 'No template')}</span></div><div class="card-stat-row"><span class="card-stat-label">Documents</span><span class="card-stat-value">${count}</span></div><div class="card-actions"><button class="small primary" onclick="event.stopPropagation(); quickUpload('${b.id}')">Upload</button><button class="small" onclick="event.stopPropagation(); openBucket('${b.id}')">Open</button><button class="small danger" onclick="event.stopPropagation(); deleteBucket('${b.id}')">Delete</button></div></div>`;
+      return `<div class="card" onclick="openBucket('${b.id}')"><h3>${esc(b.name)}</h3><div class="card-stat-row"><span class="card-stat-label">Documents</span><span class="card-stat-value">${count}</span></div><div class="card-actions"><button class="small primary" onclick="event.stopPropagation(); quickUpload('${b.id}')">Upload</button><button class="small" onclick="event.stopPropagation(); openBucket('${b.id}')">Open</button><button class="small danger" onclick="event.stopPropagation(); deleteBucket('${b.id}')">Delete</button></div></div>`;
     }).join('');
   } catch (e) {
     toast('Failed to load buckets: ' + e.message);
@@ -87,7 +87,6 @@ function schedulePolling(bucketId) {
 
 export function renderBucketInfoBar(data) {
   const infoBar = document.getElementById('bucketInfoBar');
-  if (!data.template_name && !data.template_id) { infoBar.hidden = true; return; }
   infoBar.hidden = false;
 
   const s = data.stats || {};
@@ -98,75 +97,10 @@ export function renderBucketInfoBar(data) {
   if (s.error_count) statParts.push(`<span class="stat-error">${s.error_count} failed</span>`);
   const statsHtml = statParts.length ? `<div class="bucket-stats">${s.total || 0} document${s.total !== 1 ? 's' : ''}: ${statParts.join(' · ')}</div>` : '';
 
-  infoBar.innerHTML = `<div class="info-bar-main"><span>Template: <strong>${esc(data.template_name || data.template_id)}</strong></span>${statsHtml}</div><div class="info-bar-actions"><a onclick="editTemplate('${data.template_id}')">Edit Fields</a><button class="small" onclick="changeBucketTemplate()">Change</button></div>`;
+  infoBar.innerHTML = `<div class="info-bar-main"><span>Template policy: <strong>Per-document predicted defaults</strong></span><span class="detail-muted">Choose a template per document to override before extracting.</span>${statsHtml}</div>`;
 
   const reBtn = document.getElementById('btnReExtractAll');
   if (reBtn) reBtn.hidden = !(s.done_count || s.error_count);
-}
-
-export async function changeBucketTemplate() {
-  const infoBar = document.getElementById('bucketInfoBar');
-  infoBar.innerHTML = `<span class="info-bar-loading">Loading templates…</span>`;
-
-  let templates;
-  try {
-    templates = await ensureTemplatesLoaded(api);
-  } catch (e) {
-    toast('Failed to load templates: ' + e.message);
-    renderBucketInfoBar(state.currentBucket);
-    return;
-  }
-
-  if (!templates.length) {
-    toast('No templates yet — create one to get started.');
-    renderBucketInfoBar(state.currentBucket);
-    return;
-  }
-
-  const options = templates.map((t) => `<option value="${t.id}"${t.id === state.currentBucket.template_id ? ' selected' : ''}>${esc(t.name)}</option>`).join('');
-
-  infoBar.innerHTML = `<span>Template:</span><select id="bucketTemplateChanger">${options}</select><div class="info-bar-actions"><button class="small ai-btn" onclick="openBuilderFromBucket()">+ New template</button><button class="small primary" onclick="applyBucketTemplate()">Apply</button><button class="small" onclick="cancelBucketTemplateChange()">Cancel</button></div>`;
-}
-
-export async function applyBucketTemplate() {
-  const select = document.getElementById('bucketTemplateChanger');
-  const newTemplateId = select.value;
-  const newTemplateName = select.options[select.selectedIndex].text;
-
-  if (newTemplateId === state.currentBucket.template_id) {
-    renderBucketInfoBar(state.currentBucket);
-    return;
-  }
-
-  const applyBtn = select.closest('.bucket-info-bar').querySelector('button.primary');
-  applyBtn.disabled = true;
-  applyBtn.textContent = 'Saving…';
-
-  try {
-    await api(`/buckets/${state.currentBucket.id}`, { method: 'PATCH', body: JSON.stringify({ template_id: newTemplateId }) });
-    state.currentBucket.template_id = newTemplateId;
-    state.currentBucket.template_name = newTemplateName;
-    renderBucketInfoBar(state.currentBucket);
-    toast(`Template updated to "${newTemplateName}" — new extractions will use this template`, 5000, 'success');
-  } catch (e) {
-    toast('Failed to update template: ' + e.message);
-    renderBucketInfoBar(state.currentBucket);
-  }
-}
-
-export function cancelBucketTemplateChange() {
-  renderBucketInfoBar(state.currentBucket);
-}
-
-export function openBuilderFromBucket() {
-  const savedBucketId = state.currentBucket.id;
-  state.afterTemplateSaved = async (templateId) => {
-    await openBucket(savedBucketId, true);
-    await changeBucketTemplate();
-    const sel = document.getElementById('bucketTemplateChanger');
-    if (sel) sel.value = templateId;
-  };
-  window.showTemplateBuilder();
 }
 
 async function renderJobsTable(jobs) {
@@ -186,7 +120,6 @@ async function renderJobsTable(jobs) {
   if (exportBtn) exportBtn.hidden = !hasDone;
 
   const templates = await ensureTemplatesLoaded(api);
-  const defaultTmplId = state.currentBucket?.template_id;
 
   tbody.innerHTML = jobs.map((j) => {
     const expandable = j.status === 'done' || j.status === 'error';
@@ -195,20 +128,24 @@ async function renderJobsTable(jobs) {
     const suggestedTmplName = j.suggested_template_name || null;
     const suggestedConfidence = Number(j.classification_confidence);
     const hasSuggestion = !!suggestedTmplId;
-    const selectedTemplateId = suggestedTmplId || defaultTmplId;
+    const selectedTemplateId = suggestedTmplId || '';
     let actions = '';
     if (canExtract) {
+      const placeholder = `<option value="" disabled${selectedTemplateId ? '' : ' selected'}>Select template…</option>`;
       const opts = templates.map((t) => {
         const selected = t.id === selectedTemplateId ? ' selected' : '';
-        const defaultMark = t.id === defaultTmplId ? ' (default)' : '';
-        return `<option value="${t.id}"${selected}>${esc(t.name)}${defaultMark}</option>`;
+        return `<option value="${t.id}"${selected}>${esc(t.name)}</option>`;
       }).join('');
-      const selectHtml = `<select class="template-select" id="tmpl-select-${j.id}" onclick="event.stopPropagation()" title="Choose extraction template">${opts}</select>`;
+      const selectHtml = `<select class="template-select" id="tmpl-select-${j.id}" onclick="event.stopPropagation()" onchange="syncJobTemplateSelection('${j.id}')" title="Choose extraction template">${placeholder}${opts}</select>`;
       const suggestionHtml = hasSuggestion
         ? `<div class="template-suggestion">Suggested: ${esc(suggestedTmplName || 'Template')} (${Number.isFinite(suggestedConfidence) ? Math.round(suggestedConfidence * 100) : 0}%)</div>`
-        : '';
-      if (j.status === 'pending') actions = `${selectHtml}<button class="small primary" onclick="event.stopPropagation(); runExtraction('${j.id}', this)">Extract</button>`;
-      else actions = `${selectHtml}<button class="small" onclick="event.stopPropagation(); reRunExtraction('${j.id}', this)">Re-extract</button><button class="small" onclick="event.stopPropagation(); openReview('${j.id}')">Review</button><button class="small danger" onclick="event.stopPropagation(); deleteJob('${j.id}')">Delete</button>`;
+        : '<div class="template-suggestion">No prediction yet. Select a template to extract.</div>';
+      const extractDisabled = selectedTemplateId ? '' : ' disabled';
+      if (j.status === 'pending') {
+        actions = `${selectHtml}<button class="small primary" id="extract-btn-${j.id}"${extractDisabled} onclick="event.stopPropagation(); runExtraction('${j.id}', this)">Extract</button>`;
+      } else {
+        actions = `${selectHtml}<button class="small" id="extract-btn-${j.id}"${extractDisabled} onclick="event.stopPropagation(); reRunExtraction('${j.id}', this)">Re-extract</button><button class="small" onclick="event.stopPropagation(); openReview('${j.id}')">Review</button><button class="small danger" onclick="event.stopPropagation(); deleteJob('${j.id}')">Delete</button>`;
+      }
       actions += suggestionHtml;
     }
     const autoExtractBadge = Number(j.classification_auto_run) && j.status === 'done'
@@ -423,6 +360,13 @@ function pcDone() {
 }
 function pcHide() { document.getElementById('processingCard').hidden = true; }
 
+export function syncJobTemplateSelection(jobId) {
+  const select = document.getElementById(`tmpl-select-${jobId}`);
+  const runBtn = document.getElementById(`extract-btn-${jobId}`);
+  if (!select || !runBtn) return;
+  runBtn.disabled = !select.value;
+}
+
 export async function runExtraction(jobId, btn) {
   if (state.healthStatus && !state.healthStatus.services.openai) {
     toast('AI extraction is not configured yet.');
@@ -434,6 +378,11 @@ export async function runExtraction(jobId, btn) {
 
   const select = document.getElementById(`tmpl-select-${jobId}`);
   const templateId = select?.value || undefined;
+  if (select && !templateId) {
+    toast('Select a template first for this document.', 3500, 'info');
+    if (btn) { btn.disabled = false; btn.textContent = originalBtnText || 'Run'; }
+    return;
+  }
   const body = templateId ? JSON.stringify({ template_id: templateId }) : undefined;
 
   try {
@@ -449,7 +398,12 @@ export async function runExtraction(jobId, btn) {
       await window.openReview(jobId, true);
     }
   } catch (e) {
-    toast('Extraction failed: ' + e.message);
+    const msg = String(e.message || 'Extraction failed');
+    if (msg.toLowerCase().includes('no default template')) {
+      toast('No template is predicted for this document yet. Select a template first.', 4000, 'info');
+    } else {
+      toast('Extraction failed: ' + msg);
+    }
     if (btn) { btn.disabled = false; btn.textContent = originalBtnText || 'Run'; }
   }
 }
@@ -459,11 +413,27 @@ export async function runAllPending() {
   const data = await api(`/buckets/${state.currentBucket.id}`);
   const pending = (data.jobs || []).filter((j) => j.status === 'pending');
   if (!pending.length) { toast('All documents have already been extracted.'); return; }
+  let success = 0;
+  let failed = 0;
+  let skipped = 0;
   for (const job of pending) {
-    try { await runExtraction(job.id); } catch {
-      // no-op
+    const select = document.getElementById(`tmpl-select-${job.id}`);
+    const templateId = select?.value;
+    if (!templateId) {
+      skipped += 1;
+      continue;
+    }
+    try {
+      await api(`/jobs/${job.id}/extract`, { method: 'POST', body: JSON.stringify({ template_id: templateId }) });
+      delete state.jobDetailCache[job.id];
+      success += 1;
+    } catch {
+      failed += 1;
     }
   }
+  if (state.currentBucket?.id) await openBucket(state.currentBucket.id, true);
+  const toastType = failed ? 'error' : (success ? 'success' : 'info');
+  toast(`Extracted ${success}/${pending.length} pending documents. ${skipped} skipped (no template), ${failed} failed.`, 5000, toastType);
 }
 
 export async function deleteJob(jobId) {
@@ -537,8 +507,11 @@ export async function showReExtractPanel() {
   if (!panel.hidden) { panel.hidden = true; return; }
 
   const templates = await ensureTemplatesLoaded(api);
-  const defaultTmplId = state.currentBucket?.template_id;
-  const opts = templates.map((t) => `<option value="${t.id}"${t.id === defaultTmplId ? ' selected' : ''}>${esc(t.name)}</option>`).join('');
+  if (!templates.length) {
+    toast('No templates available yet. Create one first.');
+    return;
+  }
+  const opts = templates.map((t) => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
 
   const s = state.currentBucket?.stats || {};
   const count = (s.done_count || 0) + (s.error_count || 0);
@@ -550,6 +523,10 @@ export async function showReExtractPanel() {
 export async function runBatchReExtract() {
   if (!state.currentBucket) return;
   const templateId = document.getElementById('reExtractTemplateSelect').value;
+  if (!templateId) {
+    toast('Select a template first.', 3000, 'info');
+    return;
+  }
   const panel = document.getElementById('reExtractPanel');
 
   const data = await api(`/buckets/${state.currentBucket.id}`);
@@ -648,11 +625,8 @@ export function exposeBucketActions() {
     showDashboard,
     openBucket,
     renderBucketInfoBar,
-    changeBucketTemplate,
-    applyBucketTemplate,
-    cancelBucketTemplateChange,
-    openBuilderFromBucket,
     openUploadZone,
+    syncJobTemplateSelection,
     runExtraction,
     reRunExtraction,
     runAllPending,

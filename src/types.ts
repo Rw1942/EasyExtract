@@ -27,7 +27,6 @@ export interface TemplateField {
 export interface Bucket {
   id: string;
   name: string;
-  template_id: string;
   settings: string | null;
   auto_route_rules: string | null;
   created_at: string;

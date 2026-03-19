@@ -7,7 +7,8 @@
     "deploy:safe": "./scripts/deploy-safe.sh",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
-    "db:migrate": "wrangler d1 execute easyextract-db --local --file=src/db/schema.sql"
+    "db:migrate": "wrangler d1 execute easyextract-db --local --file=src/db/schema.sql",
+    "db:migrate:remove-bucket-template": "wrangler d1 execute easyextract-db --local --file=src/db/migrations/2026-03-18-remove-bucket-template.sql"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250214.0",

@@ -136,17 +136,6 @@ export async function saveTemplate(e) {
 export function editTemplate(id) { showTemplateEditor(id); }
 
 export async function deleteTemplate(id) {
-  try {
-    const buckets = await api('/buckets');
-    const using = buckets.filter((b) => b.template_id === id).map((b) => b.name);
-    if (using.length) {
-      toast(`This template is in use by: ${using.join(', ')}. Remove it from those buckets first.`);
-      return;
-    }
-  } catch (e) {
-    toast('Failed to check template usage: ' + e.message);
-    return;
-  }
   if (!confirm('Delete this template permanently?')) return;
   try {
     invalidateTemplateCache();
@@ -173,40 +162,13 @@ export async function showNewBucket() {
   state.navStack.push('newBucket');
   showView('viewNewBucket');
   updateBreadcrumb([{ label: 'Buckets', action: 'goHome()' }, { label: 'New Bucket' }]);
-  document.getElementById('templatePreview').hidden = true;
-  const templates = await api('/templates');
-  const sel = document.getElementById('bucketTemplateSelect');
-  if (!templates.length) {
-    sel.innerHTML = '<option value="" disabled>No templates available — create one first</option>';
-    return;
-  }
-  sel.innerHTML = '<option value="">Select a template…</option>' + templates.map((t) => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
-  if (state.pendingTemplateSelect) {
-    sel.value = state.pendingTemplateSelect;
-    state.pendingTemplateSelect = null;
-    await previewTemplate(sel.value);
-  }
-}
-
-export async function previewTemplate(templateId) {
-  const box = document.getElementById('templatePreview');
-  if (!templateId) { box.hidden = true; return; }
-  try {
-    const t = await api(`/templates/${templateId}`);
-    const fields = t.fields || [];
-    box.hidden = false;
-    box.innerHTML = `<p>This template extracts ${fields.length} field${fields.length !== 1 ? 's' : ''}:</p><div class="field-pills">${fields.map((f) => `<span class="field-pill ${f.required ? 'required' : ''}" title="${esc(f.description || '')}">${esc(f.title)}</span>`).join('')}</div>`;
-  } catch {
-    box.hidden = true;
-  }
 }
 
 export async function saveBucket(e) {
   e.preventDefault();
   const name = document.getElementById('bucketNameInput').value.trim();
-  const template_id = document.getElementById('bucketTemplateSelect').value;
-  if (!template_id) { toast('Please select a template for this bucket.'); return; }
-  await api('/buckets', { method: 'POST', body: JSON.stringify({ name, template_id }) });
+  if (!name) { toast('Please enter a bucket name.'); return; }
+  await api('/buckets', { method: 'POST', body: JSON.stringify({ name }) });
   state.navStack.pop();
   window.showDashboard();
 }
@@ -215,22 +177,6 @@ export async function deleteBucket(id) {
   if (!confirm('Delete this bucket and all its documents? This can\'t be undone.')) return;
   await api(`/buckets/${id}`, { method: 'DELETE' });
   window.showDashboard();
-}
-
-export function openBuilderFromBucketForm() {
-  state.afterTemplateSaved = returnToNewBucket;
-  showTemplateBuilder();
-}
-
-export function openManualEditorFromBucketForm() {
-  state.afterTemplateSaved = returnToNewBucket;
-  showTemplateEditor();
-}
-
-export function returnToNewBucket(templateId) {
-  state.pendingTemplateSelect = templateId;
-  state.navStack = ['dashboard', 'newBucket'];
-  showNewBucket();
 }
 
 export function showTemplateBuilder() {
@@ -407,7 +353,7 @@ export async function showTemplateDetail(id, isBack) {
 
     const bucketsEl = document.getElementById('templateDetailBuckets');
     const buckets = t.buckets_using || [];
-    bucketsEl.innerHTML = `<h3>Used by ${buckets.length} bucket${buckets.length !== 1 ? 's' : ''}</h3>${buckets.length ? buckets.map((b) => `<a class="bucket-link" onclick="openBucket('${b.id}')">${esc(b.name)}</a>`).join('') : '<p class="detail-muted">Not assigned to any buckets yet. Create a bucket to start using this template.</p>'}`;
+    bucketsEl.innerHTML = `<h3>Historically used in ${buckets.length} bucket${buckets.length !== 1 ? 's' : ''}</h3>${buckets.length ? buckets.map((b) => `<a class="bucket-link" onclick="openBucket('${b.id}')">${esc(b.name)}${Number(b.run_count) ? ` (${b.run_count})` : ''}</a>`).join('') : '<p class="detail-muted">No extraction history yet for this template.</p>'}`;
 
     const runsEl = document.getElementById('templateDetailRuns');
     const runs = t.recent_runs || [];
@@ -458,7 +404,6 @@ export function exposeTemplateActions() {
     showNewBucket,
     saveBucket,
     deleteBucket,
-    previewTemplate,
     saveTemplate,
     addFieldRow,
     showTemplateBuilder,
@@ -467,9 +412,6 @@ export function exposeTemplateActions() {
     addBuilderFieldRow,
     saveBuiltTemplate,
     clearBuilderSample,
-    openBuilderFromBucketForm,
-    openManualEditorFromBucketForm,
-    returnToNewBucket,
     showSettings,
     saveSettings,
     resetPrompt,

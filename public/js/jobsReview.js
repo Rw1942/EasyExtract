@@ -198,7 +198,7 @@ export function filterJobs() {
     if (search && !j.filename.toLowerCase().includes(search)) return false;
     if (status && j.status !== status) return false;
     if (bucketId && j.bucket_id !== bucketId) return false;
-    if (templateId && j.template_id !== templateId) return false;
+    if (templateId && j.effective_template_id !== templateId) return false;
     const created = new Date(j.created_at);
     if (fromDate && created < new Date(`${fromDate}T00:00:00`)) return false;
     if (toDate && created > new Date(`${toDate}T23:59:59`)) return false;
@@ -230,7 +230,7 @@ function renderJobsIndex(jobs) {
     const autoExtractBadge = Number(j.classification_auto_run) && j.status === 'done'
       ? '<span class="meta-badge meta-badge-success">Auto-extracted</span>'
       : '';
-    return `<tr><td><input type="checkbox" data-job-id="${j.id}" ${isChecked ? 'checked' : ''} onchange="toggleJobSelection('${j.id}', this.checked)"></td><td class="filename-cell" title="${esc(j.filename)}">${esc(j.filename)}</td><td><a class="table-link" onclick="event.stopPropagation(); openBucket('${j.bucket_id}')">${esc(j.bucket_name || '—')}</a></td><td>${j.page_count ?? '—'}</td><td><span class="status-badge status-${j.status}">${STATUS_LABELS[j.status] || j.status}</span>${autoExtractBadge}</td><td>${esc(j.template_name || '—')}${suggested}</td><td class="date-cell">${date}</td><td class="actions-cell"><button class="small" onclick="openReview('${j.id}')">Review</button>${(j.status === 'error' || j.status === 'done' || j.status === 'pending') ? `<button class="small primary" onclick="runExtraction('${j.id}', this)">Run</button>` : ''}</td></tr>`;
+    return `<tr><td><input type="checkbox" data-job-id="${j.id}" ${isChecked ? 'checked' : ''} onchange="toggleJobSelection('${j.id}', this.checked)"></td><td class="filename-cell" title="${esc(j.filename)}">${esc(j.filename)}</td><td><a class="table-link" onclick="event.stopPropagation(); openBucket('${j.bucket_id}')">${esc(j.bucket_name || '—')}</a></td><td>${j.page_count ?? '—'}</td><td><span class="status-badge status-${j.status}">${STATUS_LABELS[j.status] || j.status}</span>${autoExtractBadge}</td><td>${esc(j.effective_template_name || '—')}${suggested}</td><td class="date-cell">${date}</td><td class="actions-cell"><button class="small" onclick="openReview('${j.id}')">Review</button>${(j.status === 'error' || j.status === 'done' || j.status === 'pending') ? `<button class="small primary" onclick="runExtraction('${j.id}', this)">Run</button>` : ''}</td></tr>`;
   }).join('');
 
   selectAll.checked = jobs.every((j) => state.selectedJobIds.has(j.id));
@@ -263,15 +263,21 @@ export async function reExtractSelectedFailed() {
   }
 
   let success = 0;
+  let skipped = 0;
   for (const job of selectedJobs) {
+    const templateId = job.effective_template_id;
+    if (!templateId) {
+      skipped += 1;
+      continue;
+    }
     try {
-      await api(`/jobs/${job.id}/extract`, { method: 'POST' });
+      await api(`/jobs/${job.id}/extract`, { method: 'POST', body: JSON.stringify({ template_id: templateId }) });
       success += 1;
     } catch {
       // no-op
     }
   }
-  toast(`Re-ran ${success} of ${selectedJobs.length} failed jobs.`, 3000, 'success');
+  toast(`Re-ran ${success} of ${selectedJobs.length} failed jobs.${skipped ? ` ${skipped} skipped (no template).` : ''}`, 3000, 'success');
   await showJobs();
 }
 
@@ -283,7 +289,7 @@ export function exportSelectedJobsCsv() {
   const rows = (state.jobsCache || []).filter((j) => state.selectedJobIds.has(j.id));
   const csv = [
     ['job_id', 'filename', 'bucket', 'status', 'template', 'pages', 'created_at'],
-    ...rows.map((j) => [j.id, j.filename, j.bucket_name || '', j.status, j.template_name || '', String(j.page_count ?? ''), j.created_at]),
+    ...rows.map((j) => [j.id, j.filename, j.bucket_name || '', j.status, j.effective_template_name || '', String(j.page_count ?? ''), j.created_at]),
   ];
   const blob = new Blob([csv.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement('a');
