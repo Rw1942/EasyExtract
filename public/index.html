@@ -11,20 +11,24 @@
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
 </head>
-<body>
+<body class="app-shell">
   <header>
     <div class="header-brand" id="headerTitle">
       <svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
       EasyExtract
     </div>
     <nav id="mainNav">
+      <button class="nav-tab" id="navHome" onclick="showHome()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>
+        Home
+      </button>
       <button class="nav-tab" id="navBuckets" onclick="goHome()">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
         Buckets
       </button>
-      <button class="nav-tab" id="navDocuments" onclick="showAllDocuments()">
+      <button class="nav-tab" id="navJobs" onclick="showJobs()">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-        Documents
+        Jobs
       </button>
       <button class="nav-tab" id="navTemplates" onclick="goToTemplates()">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
@@ -44,8 +48,8 @@
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
       </div>
       <div class="setup-banner-content">
-        <h3>Almost there — connect your services</h3>
-        <p>EasyExtract needs API keys for AI extraction and document reading. Add them to <code>.dev.vars</code> in the project root, then restart <code>wrangler dev</code>.</p>
+        <h3>Set required API keys</h3>
+        <p>EasyExtract needs API keys for AI extraction and document reading. Add them with Wrangler secrets, then restart <code>wrangler dev</code>.</p>
         <div id="setupChecklist" class="setup-checklist"></div>
         <details>
           <summary>Step-by-step setup guide</summary>
@@ -54,7 +58,7 @@
             <ol>
               <li>Go to <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com/api-keys</a></li>
               <li>Click "Create new secret key"</li>
-              <li>Copy it and paste into <code>.dev.vars</code> as <code>OPENAI_API_KEY=sk-...</code></li>
+              <li>Run <code>npx wrangler secret put OPENAI_API_KEY</code> and paste your key</li>
             </ol>
 
             <h4>2. Google Cloud Vision API</h4>
@@ -66,10 +70,10 @@
               <li>Open the downloaded JSON file, copy the entire contents onto one line</li>
             </ol>
 
-            <h4>3. Fill in .dev.vars</h4>
-            <pre>OPENAI_API_KEY=sk-your-key-here
-GCP_SA_KEY={"type":"service_account","project_id":"...","private_key":"...","client_email":"...","token_uri":"https://oauth2.googleapis.com/token"}
-GCP_PROJECT_ID=your-project-id</pre>
+            <h4>3. Add required Wrangler secrets</h4>
+            <pre>npx wrangler secret put OPENAI_API_KEY
+npx wrangler secret put GCP_SA_KEY
+npx wrangler secret put GCP_PROJECT_ID</pre>
 
             <h4>4. Restart the dev server</h4>
             <pre>npm run dev</pre>
@@ -78,8 +82,76 @@ GCP_PROJECT_ID=your-project-id</pre>
       </div>
     </div>
 
+    <!-- Home: marketing / wow page -->
+    <section id="viewHome" class="view">
+      <section class="home-hero">
+        <p class="home-kicker">AI Document Intelligence</p>
+        <h1>From PDF chaos to clean data your team can trust</h1>
+        <p class="home-sub">EasyExtract turns unstructured files into structured output with OCR, schema-based extraction, and fast review workflows built for real operations teams.</p>
+        <div class="home-cta-row">
+          <button class="primary" onclick="goHome()">Start in Workspace</button>
+          <button onclick="showTemplateBuilder()">Generate Template with AI</button>
+        </div>
+      </section>
+      <section class="home-feature-grid">
+        <article class="home-feature">
+          <h3>1. Define your schema</h3>
+          <p>Use Templates to control exactly what gets extracted, including nested structures and tables.</p>
+        </article>
+        <article class="home-feature">
+          <h3>2. Upload at scale</h3>
+          <p>Batch PDF ingestion with background OCR keeps throughput high while preserving reliability.</p>
+        </article>
+        <article class="home-feature">
+          <h3>3. Review side-by-side</h3>
+          <p>Compare source pages and extracted fields in one focused review experience before export.</p>
+        </article>
+      </section>
+      <section class="home-proof">
+        <div class="home-proof-copy">
+          <h2>Built for document-heavy operations</h2>
+          <p>Finance, lending, insurance, and back-office teams use EasyExtract to remove manual entry bottlenecks and keep data quality high.</p>
+        </div>
+        <div class="home-proof-stats" aria-hidden="true">
+          <div><strong>OCR + AI</strong><span>pipeline</span></div>
+          <div><strong>Template-first</strong><span>governance</span></div>
+          <div><strong>CSV export</strong><span>ready</span></div>
+        </div>
+      </section>
+    </section>
+
     <!-- Dashboard: list of buckets -->
-    <section id="viewDashboard" class="view">
+    <section id="viewDashboard" class="view" hidden>
+      <section class="dashboard-hero" aria-label="EasyExtract Overview">
+        <div class="hero-content">
+          <p class="hero-kicker">Next-Gen Document Intelligence</p>
+          <h1>Turn PDF chaos into structured data</h1>
+          <p class="hero-sub">
+            EasyExtract combines OCR and AI extraction so operations teams can process documents faster, with less manual rework.
+          </p>
+          <div class="hero-actions">
+            <button class="primary" onclick="showNewBucket()">Start New Extraction</button>
+            <button onclick="goToTemplates()">Explore Templates</button>
+          </div>
+        </div>
+        <div class="hero-stats" aria-hidden="true">
+          <article class="hero-stat-card">
+            <p class="hero-stat-label">Workflow</p>
+            <p class="hero-stat-value">Bucket-based ops</p>
+            <p class="hero-stat-copy">Group related files, run extraction in batches, and review results in one place.</p>
+          </article>
+          <article class="hero-stat-card">
+            <p class="hero-stat-label">Output</p>
+            <p class="hero-stat-value">Schema-driven JSON</p>
+            <p class="hero-stat-copy">Templates define exactly what fields are returned so data is consistent and export-ready.</p>
+          </article>
+          <article class="hero-stat-card">
+            <p class="hero-stat-label">Speed</p>
+            <p class="hero-stat-value">Parallel OCR + AI</p>
+            <p class="hero-stat-copy">Process multi-page PDFs efficiently and keep teams moving without spreadsheet triage.</p>
+          </article>
+        </div>
+      </section>
       <div class="toolbar">
         <div>
           <h2>Buckets</h2>
@@ -169,17 +241,22 @@ GCP_PROJECT_ID=your-project-id</pre>
       <p id="noJobs" class="empty-state" hidden>This bucket is empty. Drop some PDFs above to get started.</p>
     </section>
 
-    <!-- All Documents view -->
-    <section id="viewAllDocuments" class="view" hidden>
+    <!-- Jobs workspace -->
+    <section id="viewJobs" class="view" hidden>
       <div class="toolbar">
         <div>
-          <h2>All Documents</h2>
-          <p class="toolbar-sub">Find any document you've uploaded — search, filter, and jump straight to results.</p>
+          <h2>Jobs</h2>
+          <p class="toolbar-sub">Track extraction status across every bucket, filter fast, and review outputs side-by-side.</p>
+        </div>
+        <div class="toolbar-actions">
+          <button id="jobsRefreshToggle" onclick="toggleJobsRefresh()">Pause Refresh</button>
+          <button onclick="reExtractSelectedFailed()">Re-extract Failed</button>
+          <button onclick="exportSelectedJobsCsv()">Export Selected CSV</button>
         </div>
       </div>
       <div class="docs-filters">
-        <input type="text" id="docsSearchInput" placeholder="Search documents…" class="docs-search" oninput="filterAllDocuments()">
-        <select id="docsStatusFilter" class="docs-status-filter" onchange="filterAllDocuments()">
+        <input type="text" id="jobsSearchInput" placeholder="Search files…" class="docs-search" oninput="filterJobs()">
+        <select id="jobsStatusFilter" class="docs-status-filter" onchange="filterJobs()">
           <option value="">All statuses</option>
           <option value="done">Extracted</option>
           <option value="pending">Ready</option>
@@ -187,16 +264,53 @@ GCP_PROJECT_ID=your-project-id</pre>
           <option value="extracting">Extracting</option>
           <option value="error">Failed</option>
         </select>
+        <select id="jobsBucketFilter" class="docs-status-filter" onchange="filterJobs()">
+          <option value="">All buckets</option>
+        </select>
+        <select id="jobsTemplateFilter" class="docs-status-filter" onchange="filterJobs()">
+          <option value="">All templates</option>
+        </select>
+        <input type="date" id="jobsFromDate" class="docs-status-filter" onchange="filterJobs()">
+        <input type="date" id="jobsToDate" class="docs-status-filter" onchange="filterJobs()">
       </div>
       <div class="table-wrap">
-        <table id="allDocsTable">
+        <table id="jobsIndexTable">
           <thead>
-            <tr><th>File</th><th>Bucket</th><th>Pages</th><th>Status</th><th>Template</th><th>Date</th></tr>
+            <tr><th><input type="checkbox" id="jobsSelectAll" onchange="toggleAllJobsSelection(this.checked)"></th><th>File</th><th>Bucket</th><th>Pages</th><th>Status</th><th>Template</th><th>Date</th><th>Actions</th></tr>
           </thead>
-          <tbody id="allDocsBody"></tbody>
+          <tbody id="jobsIndexBody"></tbody>
         </table>
       </div>
-      <p id="noDocsMessage" class="empty-state" hidden>No documents match your search. Try a different filter or upload new files.</p>
+      <p id="noJobsIndexMessage" class="empty-state" hidden>No jobs match your filters. Try widening your search.</p>
+    </section>
+
+    <!-- Review: source + extracted data -->
+    <section id="viewReview" class="view" hidden>
+      <div class="toolbar">
+        <div>
+          <h2 id="reviewTitle">Review</h2>
+          <p class="toolbar-sub" id="reviewSubtitle"></p>
+        </div>
+        <div class="toolbar-actions">
+          <button onclick="goBack()">Back</button>
+        </div>
+      </div>
+      <div class="review-layout">
+        <aside class="review-source">
+          <div class="review-card-header">
+            <h3>Source Document</h3>
+            <button class="small" id="toggleOcrBtn" onclick="toggleReviewOcr()">Show OCR Text</button>
+          </div>
+          <div id="reviewPreviewWrap" class="review-preview-wrap"></div>
+          <pre id="reviewOcrText" class="review-ocr-text" hidden></pre>
+        </aside>
+        <section class="review-results">
+          <div class="review-card-header">
+            <h3>Extracted Values</h3>
+          </div>
+          <div id="reviewRuns"></div>
+        </section>
+      </div>
     </section>
 
     <!-- Template detail -->

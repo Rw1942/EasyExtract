@@ -59,9 +59,27 @@ export async function handleUpload(
 
   const jobId = uid();
   const batchSize = await getOcrBatchSize(env);
+
+  // Persist a first-page preview so review screens can render source side-by-side with extracted data.
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS job_previews (
+      job_id TEXT PRIMARY KEY,
+      preview_page TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+    )`,
+  ).run();
+
   await env.DB.prepare('INSERT INTO jobs (id, bucket_id, filename, status, page_count) VALUES (?, ?, ?, ?, ?)')
     .bind(jobId, bucketId, body.filename, 'ocr', body.pages.length)
     .run();
+
+  const firstPage = body.pages[0];
+  if (typeof firstPage === 'string' && firstPage.length > 0) {
+    await env.DB.prepare('INSERT OR REPLACE INTO job_previews (job_id, preview_page) VALUES (?, ?)')
+      .bind(jobId, firstPage)
+      .run();
+  }
 
   ctx.waitUntil(
     processOcrInBackground(env, jobId, body.pages, batchSize),

@@ -9,12 +9,15 @@ let healthStatus = null;
 let currentBucket = null;
 let editingTemplateId = null;
 let viewingTemplateId = null;     // template detail view
-let navStack = ['dashboard'];
+let navStack = ['home'];
 let afterTemplateSaved = null;    // callback after any template is created
 let pendingTemplateSelect = null; // ID to auto-select in showNewBucket()
 let pollingBucketId = null;       // tracks active polling target
 let allTemplatesCache = null;     // cached template list for per-file selectors
-let allDocsCache = null;          // cached docs for the All Documents view
+let jobsCache = null;             // cached jobs for the global Jobs view
+const selectedJobIds = new Set(); // selected jobs in global Jobs view
+let jobsRefreshPaused = false;
+let jobsRefreshTimer = null;
 
 /** Load and cache the template list. Invalidated on create/edit/delete. */
 async function ensureTemplatesLoaded() {
@@ -158,24 +161,46 @@ function renderSetupBanner() {
 // ── Navigation ──
 function showView(id) {
   if (id !== 'viewBucket') pollingBucketId = null;
+  if (id !== 'viewJobs' && jobsRefreshTimer) {
+    clearTimeout(jobsRefreshTimer);
+    jobsRefreshTimer = null;
+  }
   document.querySelectorAll('.view').forEach(v => v.hidden = true);
   document.getElementById(id).hidden = false;
+
+  // Home is a marketing surface; keep setup guidance focused on app workflows.
+  const banner = document.getElementById('setupBanner');
+  if (banner) {
+    if (id === 'viewHome') {
+      banner.hidden = true;
+    } else {
+      renderSetupBanner();
+    }
+  }
 }
 
 function goBack() {
   navStack.pop();
-  const prev = navStack[navStack.length - 1] || 'dashboard';
-  if (prev === 'dashboard') showDashboard();
+  const prev = navStack[navStack.length - 1] || 'home';
+  if (prev === 'home') showHome();
+  else if (prev === 'dashboard') showDashboard();
   else if (prev === 'templateList') showTemplateList();
   else if (prev === 'templateBuilder') showTemplateBuilder();
-  else if (prev === 'allDocuments') showAllDocuments();
+  else if (prev === 'jobs') showJobs();
   else if (prev.startsWith('templateDetail:')) showTemplateDetail(prev.split(':')[1], true);
   else if (prev.startsWith('bucket:')) openBucket(prev.split(':')[1], true);
+  else if (prev.startsWith('review:')) openReview(prev.split(':')[1], true);
 }
 
 function goHome() {
   navStack = ['dashboard'];
   showDashboard();
+}
+
+function showHome() {
+  navStack = ['home'];
+  showView('viewHome');
+  updateBreadcrumb([{ label: 'Home' }]);
 }
 
 function goToTemplates() {
@@ -184,17 +209,19 @@ function goToTemplates() {
 }
 
 function setActiveTab(tab) {
+  document.getElementById('navHome').classList.toggle('active', tab === 'home');
   document.getElementById('navBuckets').classList.toggle('active', tab === 'buckets');
-  document.getElementById('navDocuments').classList.toggle('active', tab === 'documents');
+  document.getElementById('navJobs').classList.toggle('active', tab === 'jobs');
   document.getElementById('navTemplates').classList.toggle('active', tab === 'templates');
 }
 
 function updateBreadcrumb(parts) {
   const section = parts[0]?.label;
-  const isSection = section === 'Buckets' || section === 'Templates' || section === 'Documents';
+  const isSection = section === 'Home' || section === 'Buckets' || section === 'Templates' || section === 'Jobs';
   setActiveTab(
-    section === 'Buckets' ? 'buckets'
-    : section === 'Documents' ? 'documents'
+    section === 'Home' ? 'home'
+    : section === 'Buckets' ? 'buckets'
+    : section === 'Jobs' ? 'jobs'
     : section === 'Templates' ? 'templates' : ''
   );
 
@@ -210,7 +237,36 @@ function updateBreadcrumb(parts) {
   ).join('');
 }
 
-document.getElementById('headerTitle').onclick = goHome;
+document.getElementById('headerTitle').onclick = showHome;
+
+/**
+ * Dashboard empty-state markup.
+ * Keeping this as a helper keeps `showDashboard()` focused on data flow.
+ */
+function getDashboardEmptyMarkup() {
+  return `
+    <h3>Welcome to EasyExtract</h3>
+    <p>Turn any PDF into structured, usable data — in seconds, not hours. Here's how:</p>
+    <div class="onboarding-steps">
+      <div class="onboarding-step">
+        <div class="step-num">1</div>
+        <h4>Create a Template</h4>
+        <p>Tell AI what data you need — revenue, dates, account numbers, line items — anything.</p>
+      </div>
+      <div class="onboarding-step">
+        <div class="step-num">2</div>
+        <h4>Create a Bucket</h4>
+        <p>Group similar documents together, like "Q4 Reports" or "Loan Applications."</p>
+      </div>
+      <div class="onboarding-step">
+        <div class="step-num">3</div>
+        <h4>Upload &amp; Extract</h4>
+        <p>Drop your PDFs in and AI instantly reads and extracts your data — ready to export.</p>
+      </div>
+    </div>
+    <button class="primary" onclick="showTemplateList()">Get Started</button>
+  `;
+}
 
 // ── Dashboard ──
 async function showDashboard() {
@@ -225,28 +281,7 @@ async function showDashboard() {
     if (!buckets.length) {
       grid.innerHTML = '';
       empty.hidden = false;
-      empty.innerHTML = `
-        <h3>Welcome to EasyExtract</h3>
-        <p>Turn any PDF into structured, usable data — in seconds, not hours. Here's how:</p>
-        <div class="onboarding-steps">
-          <div class="onboarding-step">
-            <div class="step-num">1</div>
-            <h4>Create a Template</h4>
-            <p>Tell AI what data you need — revenue, dates, account numbers, line items — anything.</p>
-          </div>
-          <div class="onboarding-step">
-            <div class="step-num">2</div>
-            <h4>Create a Bucket</h4>
-            <p>Group similar documents together, like "Q4 Reports" or "Loan Applications."</p>
-          </div>
-          <div class="onboarding-step">
-            <div class="step-num">3</div>
-            <h4>Upload &amp; Extract</h4>
-            <p>Drop your PDFs in and AI instantly reads and extracts your data — ready to export.</p>
-          </div>
-        </div>
-        <button class="primary" onclick="showTemplateList()">Get Started</button>
-      `;
+      empty.innerHTML = getDashboardEmptyMarkup();
       await seedStarterTemplates();
       return;
     }
@@ -468,6 +503,7 @@ async function renderJobs(jobs) {
         actions = `${selectHtml}<button class="small primary" onclick="event.stopPropagation(); runExtraction('${j.id}', this)">Extract</button>`;
       } else {
         actions = `${selectHtml}<button class="small" onclick="event.stopPropagation(); reRunExtraction('${j.id}', this)">Re-extract</button>
+           <button class="small" onclick="event.stopPropagation(); openReview('${j.id}')">Review</button>
            <button class="small danger" onclick="event.stopPropagation(); deleteJob('${j.id}')">Delete</button>`;
       }
     }
@@ -838,6 +874,7 @@ async function runExtraction(jobId, btn) {
     return;
   }
 
+  const originalBtnText = btn?.textContent;
   if (btn) { btn.disabled = true; btn.textContent = 'Extracting…'; }
 
   // Read per-file template selector if present
@@ -848,11 +885,18 @@ async function runExtraction(jobId, btn) {
   try {
     await api(`/jobs/${jobId}/extract`, { method: 'POST', ...(body && { body }) });
     delete jobDetailCache[jobId];
-    await openBucket(currentBucket.id, true);
-    await toggleJobDetail(jobId);
+    const activeView = document.querySelector('.view:not([hidden])')?.id;
+    if (activeView === 'viewBucket' && currentBucket?.id) {
+      await openBucket(currentBucket.id, true);
+      await toggleJobDetail(jobId);
+    } else if (activeView === 'viewJobs') {
+      await showJobs();
+    } else if (activeView === 'viewReview') {
+      await openReview(jobId, true);
+    }
   } catch (e) {
     toast('Extraction failed: ' + e.message);
-    if (btn) { btn.disabled = false; btn.textContent = 'Extract'; }
+    if (btn) { btn.disabled = false; btn.textContent = originalBtnText || 'Run'; }
   }
 }
 
@@ -1461,63 +1505,243 @@ async function seedStarterTemplates() {
   }
 }
 
-// ── All Documents view ──
-async function showAllDocuments() {
-  if (navStack[navStack.length - 1] !== 'allDocuments') navStack.push('allDocuments');
-  showView('viewAllDocuments');
-  updateBreadcrumb([{ label: 'Documents' }]);
-
-  document.getElementById('docsSearchInput').value = '';
-  document.getElementById('docsStatusFilter').value = '';
+// ── Jobs workspace (global queue) ──
+async function showJobs() {
+  if (navStack[navStack.length - 1] !== 'jobs') navStack.push('jobs');
+  showView('viewJobs');
+  updateBreadcrumb([{ label: 'Jobs' }]);
 
   try {
-    allDocsCache = await api('/jobs');
-    renderAllDocs(allDocsCache);
+    const [jobs, buckets, templates] = await Promise.all([
+      api('/jobs'),
+      api('/buckets'),
+      ensureTemplatesLoaded(),
+    ]);
+    jobsCache = jobs;
+    selectedJobIds.clear();
+    renderJobsFilters(buckets, templates);
+    renderJobsIndex(jobsCache);
+    const refreshBtn = document.getElementById('jobsRefreshToggle');
+    if (refreshBtn) refreshBtn.textContent = jobsRefreshPaused ? 'Resume Refresh' : 'Pause Refresh';
+    scheduleJobsRefresh();
   } catch (e) {
-    toast('Failed to load documents: ' + e.message);
+    toast('Failed to load jobs: ' + e.message);
   }
 }
 
-function filterAllDocuments() {
-  if (!allDocsCache) return;
-  const search = document.getElementById('docsSearchInput').value.trim().toLowerCase();
-  const status = document.getElementById('docsStatusFilter').value;
-  let filtered = allDocsCache;
-  if (search) filtered = filtered.filter(j => j.filename.toLowerCase().includes(search));
-  if (status) filtered = filtered.filter(j => j.status === status);
-  renderAllDocs(filtered);
+function scheduleJobsRefresh() {
+  if (jobsRefreshTimer) clearTimeout(jobsRefreshTimer);
+  if (jobsRefreshPaused) return;
+  jobsRefreshTimer = setTimeout(async () => {
+    const activeView = document.querySelector('.view:not([hidden])')?.id;
+    if (activeView !== 'viewJobs' || jobsRefreshPaused) return;
+    try {
+      jobsCache = await api('/jobs');
+      filterJobs();
+      scheduleJobsRefresh();
+    } catch {
+      scheduleJobsRefresh();
+    }
+  }, 10000);
 }
 
-function renderAllDocs(jobs) {
-  const tbody = document.getElementById('allDocsBody');
-  const empty = document.getElementById('noDocsMessage');
+function toggleJobsRefresh() {
+  jobsRefreshPaused = !jobsRefreshPaused;
+  const btn = document.getElementById('jobsRefreshToggle');
+  if (btn) btn.textContent = jobsRefreshPaused ? 'Resume Refresh' : 'Pause Refresh';
+  if (!jobsRefreshPaused) scheduleJobsRefresh();
+}
+
+function renderJobsFilters(buckets, templates) {
+  const bucketFilter = document.getElementById('jobsBucketFilter');
+  const templateFilter = document.getElementById('jobsTemplateFilter');
+  bucketFilter.innerHTML = `<option value="">All buckets</option>${buckets.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('')}`;
+  templateFilter.innerHTML = `<option value="">All templates</option>${templates.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}`;
+  document.getElementById('jobsSearchInput').value = '';
+  document.getElementById('jobsStatusFilter').value = '';
+  document.getElementById('jobsFromDate').value = '';
+  document.getElementById('jobsToDate').value = '';
+}
+
+function filterJobs() {
+  if (!jobsCache) return;
+  const search = document.getElementById('jobsSearchInput').value.trim().toLowerCase();
+  const status = document.getElementById('jobsStatusFilter').value;
+  const bucketId = document.getElementById('jobsBucketFilter').value;
+  const templateId = document.getElementById('jobsTemplateFilter').value;
+  const fromDate = document.getElementById('jobsFromDate').value;
+  const toDate = document.getElementById('jobsToDate').value;
+
+  const filtered = jobsCache.filter(j => {
+    if (search && !j.filename.toLowerCase().includes(search)) return false;
+    if (status && j.status !== status) return false;
+    if (bucketId && j.bucket_id !== bucketId) return false;
+    if (templateId && j.template_id !== templateId) return false;
+    const created = new Date(j.created_at);
+    if (fromDate && created < new Date(`${fromDate}T00:00:00`)) return false;
+    if (toDate && created > new Date(`${toDate}T23:59:59`)) return false;
+    return true;
+  });
+
+  renderJobsIndex(filtered);
+}
+
+function renderJobsIndex(jobs) {
+  const tbody = document.getElementById('jobsIndexBody');
+  const empty = document.getElementById('noJobsIndexMessage');
+  const selectAll = document.getElementById('jobsSelectAll');
 
   if (!jobs.length) {
     tbody.innerHTML = '';
     empty.hidden = false;
+    selectAll.checked = false;
     return;
   }
   empty.hidden = true;
 
   tbody.innerHTML = jobs.map(j => {
     const date = new Date(j.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    const isChecked = selectedJobIds.has(j.id);
     return `
-      <tr class="job-row expandable" onclick="navigateToBucketJob('${j.bucket_id}', '${j.id}')" style="cursor:pointer">
+      <tr>
+        <td><input type="checkbox" data-job-id="${j.id}" ${isChecked ? 'checked' : ''} onchange="toggleJobSelection('${j.id}', this.checked)"></td>
         <td class="filename-cell" title="${esc(j.filename)}">${esc(j.filename)}</td>
         <td><a onclick="event.stopPropagation(); openBucket('${j.bucket_id}')" style="color:var(--primary);cursor:pointer">${esc(j.bucket_name || '—')}</a></td>
         <td>${j.page_count ?? '—'}</td>
         <td><span class="status-badge status-${j.status}">${STATUS_LABELS[j.status] || j.status}</span></td>
         <td>${esc(j.template_name || '—')}</td>
         <td style="white-space:nowrap">${date}</td>
+        <td class="actions-cell">
+          <button class="small" onclick="openReview('${j.id}')">Review</button>
+          ${(j.status === 'error' || j.status === 'done' || j.status === 'pending') ? `<button class="small primary" onclick="runExtraction('${j.id}', this)">Run</button>` : ''}
+        </td>
       </tr>`;
   }).join('');
+
+  selectAll.checked = jobs.every(j => selectedJobIds.has(j.id));
 }
 
-async function navigateToBucketJob(bucketId, jobId) {
-  await openBucket(bucketId);
-  if (document.getElementById(`wrap-${jobId}`)) {
-    await toggleJobDetail(jobId);
+function toggleJobSelection(jobId, checked) {
+  if (checked) selectedJobIds.add(jobId);
+  else selectedJobIds.delete(jobId);
+}
+
+function toggleAllJobsSelection(checked) {
+  document.querySelectorAll('#jobsIndexBody input[type="checkbox"]').forEach(el => {
+    el.checked = checked;
+    const jobId = el.dataset.jobId;
+    if (!jobId) return;
+    if (checked) selectedJobIds.add(jobId);
+    else selectedJobIds.delete(jobId);
+  });
+}
+
+async function reExtractSelectedFailed() {
+  if (!selectedJobIds.size) {
+    toast('Select one or more jobs first.', 2500, 'info');
+    return;
   }
+  const selectedJobs = (jobsCache || []).filter(j => selectedJobIds.has(j.id) && j.status === 'error');
+  if (!selectedJobs.length) {
+    toast('No failed jobs selected.', 2500, 'info');
+    return;
+  }
+
+  let success = 0;
+  for (const job of selectedJobs) {
+    try {
+      await api(`/jobs/${job.id}/extract`, { method: 'POST' });
+      success++;
+    } catch (e) {
+      console.error('Failed re-extract job', job.id, e);
+    }
+  }
+  toast(`Re-ran ${success} of ${selectedJobs.length} failed jobs.`, 3000, 'success');
+  await showJobs();
+}
+
+function exportSelectedJobsCsv() {
+  if (!selectedJobIds.size) {
+    toast('Select one or more jobs first.', 2500, 'info');
+    return;
+  }
+  const rows = (jobsCache || []).filter(j => selectedJobIds.has(j.id));
+  const csv = [
+    ['job_id', 'filename', 'bucket', 'status', 'template', 'pages', 'created_at'],
+    ...rows.map(j => [j.id, j.filename, j.bucket_name || '', j.status, j.template_name || '', String(j.page_count ?? ''), j.created_at]),
+  ];
+  const blob = new Blob([csv.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `easyextract-jobs-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+// ── Side-by-side review view ──
+async function openReview(jobId, isBack = false) {
+  if (!isBack) navStack.push(`review:${jobId}`);
+  showView('viewReview');
+
+  try {
+    const job = await api(`/jobs/${jobId}`);
+    const title = document.getElementById('reviewTitle');
+    const subtitle = document.getElementById('reviewSubtitle');
+    const previewWrap = document.getElementById('reviewPreviewWrap');
+    const ocrText = document.getElementById('reviewOcrText');
+    const runsWrap = document.getElementById('reviewRuns');
+    const toggleBtn = document.getElementById('toggleOcrBtn');
+
+    title.textContent = job.filename || 'Review';
+    subtitle.textContent = `${job.bucket_name || 'Unknown bucket'} · ${STATUS_LABELS[job.status] || job.status}`;
+    updateBreadcrumb([{ label: 'Jobs', action: 'showJobs()' }, { label: 'Review' }]);
+
+    const preview = typeof job.preview_page === 'string' ? job.preview_page : '';
+    if (preview) {
+      previewWrap.innerHTML = `<img class="review-preview-image" alt="Document preview page" src="data:image/jpeg;base64,${preview}">`;
+    } else {
+      previewWrap.innerHTML = `<div class="review-empty">No image preview available for this upload.</div>`;
+    }
+
+    const sourceText = (job.ocr_text || '').trim();
+    ocrText.textContent = sourceText || 'No OCR text available.';
+    ocrText.hidden = true;
+    previewWrap.hidden = false;
+    toggleBtn.textContent = 'Show OCR Text';
+
+    const runs = job.runs || [];
+    if (!runs.length) {
+      runsWrap.innerHTML = `<div class="detail-empty">No extraction runs yet for this job.</div>`;
+      return;
+    }
+
+    if (runs.length === 1) {
+      runsWrap.innerHTML = renderSingleRun(runs[0]);
+      return;
+    }
+
+    const tabs = runs.map((run, i) => {
+      const label = run.template_name || 'Template';
+      const date = new Date(run.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+      return `<button class="run-tab${i === 0 ? ' active' : ''}" onclick="switchRunTab(this, ${i})" data-run-idx="${i}">${esc(label)} (${date})</button>`;
+    }).join('');
+    const panels = runs.map((run, i) =>
+      `<div class="run-panel${i === 0 ? ' active' : ''}" data-run-idx="${i}">${renderSingleRun(run)}</div>`
+    ).join('');
+    runsWrap.innerHTML = `<div class="run-tabs">${tabs}</div>${panels}`;
+  } catch (e) {
+    toast('Failed to load review: ' + e.message);
+  }
+}
+
+function toggleReviewOcr() {
+  const previewWrap = document.getElementById('reviewPreviewWrap');
+  const ocrText = document.getElementById('reviewOcrText');
+  const toggleBtn = document.getElementById('toggleOcrBtn');
+  const showOcr = ocrText.hidden;
+  ocrText.hidden = !showOcr;
+  previewWrap.hidden = showOcr;
+  toggleBtn.textContent = showOcr ? 'Show Preview' : 'Show OCR Text';
 }
 
 // ── Template detail view ──
@@ -1713,7 +1937,7 @@ function esc(s) {
 
 // Expose to inline handlers
 Object.assign(window, {
-  goHome, goToTemplates,
+  showHome, goHome, goToTemplates,
   showDashboard, openBucket, showTemplateList, showTemplateEditor,
   editTemplate, deleteTemplate, duplicateTemplate, showNewBucket, saveBucket, deleteBucket,
   renderBucketInfoBar, changeBucketTemplate, applyBucketTemplate, cancelBucketTemplateChange,
@@ -1726,7 +1950,9 @@ Object.assign(window, {
   showSettings, saveSettings, resetPrompt,
   toggleDebugPanel, clearDebugPanel, updateDebugCount,
   // New: product improvements
-  showAllDocuments, filterAllDocuments, navigateToBucketJob,
+  showJobs, filterJobs, toggleJobSelection, toggleAllJobsSelection,
+  reExtractSelectedFailed, exportSelectedJobsCsv, toggleJobsRefresh,
+  openReview, toggleReviewOcr,
   showTemplateDetail, getViewingTemplateId: () => viewingTemplateId,
   quickUpload, showReExtractPanel, runBatchReExtract,
   switchRunTab,
@@ -1734,4 +1960,4 @@ Object.assign(window, {
 
 // ── Init ──
 await checkHealth();
-showDashboard();
+showHome();

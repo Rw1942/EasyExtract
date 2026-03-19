@@ -65,7 +65,15 @@ export async function handleExtract(req: Request, env: Env, jobId: string): Prom
 }
 
 export async function handleGetJob(env: Env, jobId: string): Promise<Response> {
-  const job = await env.DB.prepare('SELECT * FROM jobs WHERE id = ?').bind(jobId).first<Job>();
+  const job = await env.DB.prepare(
+    `SELECT j.*, b.name as bucket_name, b.template_id as bucket_template_id,
+            t.name as bucket_template_name, p.preview_page
+     FROM jobs j
+     LEFT JOIN buckets b ON j.bucket_id = b.id
+     LEFT JOIN templates t ON b.template_id = t.id
+     LEFT JOIN job_previews p ON p.job_id = j.id
+     WHERE j.id = ?`,
+  ).bind(jobId).first<Job & Record<string, unknown>>();
   if (!job) return err(404, 'NOT_FOUND', 'Job not found');
 
   const { results: runs } = await env.DB.prepare(
@@ -88,16 +96,26 @@ export async function handleGetJob(env: Env, jobId: string): Promise<Response> {
 export async function handleListJobs(env: Env, url: URL): Promise<Response> {
   const status = url.searchParams.get('status');
   const search = url.searchParams.get('search');
+  const bucketId = url.searchParams.get('bucket_id');
+  const templateId = url.searchParams.get('template_id');
+  const from = url.searchParams.get('from');
+  const to = url.searchParams.get('to');
 
-  let sql = `SELECT j.*, b.name as bucket_name, t.name as template_name
+  let sql = `SELECT j.*, b.name as bucket_name, b.template_id as template_id, t.name as template_name,
+      CASE WHEN p.job_id IS NULL THEN 0 ELSE 1 END AS has_preview
      FROM jobs j
      LEFT JOIN buckets b ON j.bucket_id = b.id
-     LEFT JOIN templates t ON b.template_id = t.id`;
+     LEFT JOIN templates t ON b.template_id = t.id
+     LEFT JOIN job_previews p ON p.job_id = j.id`;
   const conditions: string[] = [];
   const binds: string[] = [];
 
   if (status) { conditions.push('j.status = ?'); binds.push(status); }
   if (search) { conditions.push('j.filename LIKE ?'); binds.push(`%${search}%`); }
+  if (bucketId) { conditions.push('j.bucket_id = ?'); binds.push(bucketId); }
+  if (templateId) { conditions.push('b.template_id = ?'); binds.push(templateId); }
+  if (from) { conditions.push('j.created_at >= ?'); binds.push(from); }
+  if (to) { conditions.push('j.created_at <= ?'); binds.push(to); }
   if (conditions.length) sql += ' WHERE ' + conditions.join(' AND ');
   sql += ' ORDER BY j.created_at DESC LIMIT 200';
 

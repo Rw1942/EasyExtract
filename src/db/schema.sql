@@ -51,6 +51,13 @@ CREATE TABLE IF NOT EXISTS runs (
   FOREIGN KEY (template_id) REFERENCES templates(id)
 );
 
+CREATE TABLE IF NOT EXISTS job_previews (
+  job_id TEXT PRIMARY KEY,
+  preview_page TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL,
