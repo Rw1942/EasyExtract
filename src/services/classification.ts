@@ -25,13 +25,35 @@ const NANO_MODEL_PRIMARY = 'gpt-5.4-nano';
 const NANO_MODEL_FALLBACK = 'gpt-5-nano';
 const OCR_SNIPPET_LIMIT = 20000;
 const CANDIDATE_LIMIT = 11;
+const MIN_CLASSIFICATION_CONFIDENCE = 0.12;
+
+const STOPWORDS = new Set([
+  'the', 'and', 'for', 'with', 'from', 'that', 'this', 'are', 'was', 'were', 'has', 'have', 'had',
+  'into', 'onto', 'your', 'their', 'there', 'here', 'than', 'then', 'when', 'where', 'which', 'while',
+  'will', 'shall', 'would', 'could', 'should', 'about', 'above', 'below', 'under', 'over', 'between',
+  'after', 'before', 'during', 'each', 'every', 'other', 'some', 'such', 'also', 'only', 'more', 'most',
+  'very', 'much', 'many', 'any', 'all', 'our', 'out', 'off', 'not', 'but', 'can', 'you', 'its', 'it',
+]);
 
 interface TemplateCandidate {
   id: string;
   name: string;
   doc_type_hint: string | null;
   summary: string;
+  normalizedName: string;
+  normalizedHint: string;
+  nameTokens: Set<string>;
+  hintTokens: Set<string>;
+  titleTokens: Set<string>;
+  descriptionTokens: Set<string>;
+  schemaTokens: Set<string>;
+  summaryTokens: Set<string>;
 }
+
+type CandidateFieldSignal = Pick<
+TemplateField,
+'group_name' | 'title' | 'description' | 'type' | 'format_hint' | 'required'
+>;
 
 interface ClassificationDecision {
   suggestedTemplateId: string;
@@ -56,7 +78,7 @@ interface LocalScore {
 function normalizeText(value: string): string {
   return value
     .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -64,7 +86,20 @@ function normalizeText(value: string): string {
 function tokenize(value: string): string[] {
   return normalizeText(value)
     .split(' ')
-    .filter((token) => token.length > 2);
+    .filter((token) => token.length > 1 && !STOPWORDS.has(token));
+}
+
+function toTokenSet(value: string): Set<string> {
+  return new Set(tokenize(value));
+}
+
+function overlapRatio(reference: Set<string>, documentTokens: Set<string>): number {
+  if (!reference.size || !documentTokens.size) return 0;
+  let matches = 0;
+  for (const token of reference) {
+    if (documentTokens.has(token)) matches += 1;
+  }
+  return matches / reference.size;
 }
 
 function clamp01(value: number): number {
@@ -152,28 +187,48 @@ async function loadCandidates(env: Env, bucketId: string): Promise<TemplateCandi
 
   const placeholders = selected.map(() => '?').join(', ');
   const fieldStmt = env.DB.prepare(
-    `SELECT template_id, title, description
+    `SELECT template_id, group_name, title, description, type, format_hint, required
      FROM template_fields
      WHERE template_id IN (${placeholders})
      ORDER BY sort_order ASC`,
   ).bind(...selected.map((row) => row.id));
 
-  const { results: fields } = await fieldStmt.all<Pick<TemplateField, 'template_id' | 'title' | 'description'>>();
-  const fieldsByTemplate = new Map<string, string[]>();
+  const { results: fields } = await fieldStmt.all<Pick<TemplateField, 'template_id'> & CandidateFieldSignal>();
+  const fieldsByTemplate = new Map<string, CandidateFieldSignal[]>();
 
   for (const field of fields) {
-    const chunk = [field.title, field.description || ''].filter(Boolean).join(' - ');
-    if (!chunk) continue;
     const list = fieldsByTemplate.get(field.template_id) ?? [];
-    list.push(chunk);
+    list.push({
+      group_name: field.group_name,
+      title: field.title,
+      description: field.description,
+      type: field.type,
+      format_hint: field.format_hint,
+      required: field.required,
+    });
     fieldsByTemplate.set(field.template_id, list);
   }
 
   return selected.map((tmpl) => {
+    const fieldsForTemplate = fieldsByTemplate.get(tmpl.id) ?? [];
+    const titleText = fieldsForTemplate.map((field) => field.title).filter(Boolean).join(' | ');
+    const descriptionText = fieldsForTemplate.map((field) => field.description || '').filter(Boolean).join(' | ');
+    const schemaSignalText = fieldsForTemplate.map((field) => {
+      const requirement = field.required ? 'required' : 'optional';
+      return [
+        field.group_name ? `group ${field.group_name}` : '',
+        field.type ? `type ${field.type}` : '',
+        field.format_hint ? `format ${field.format_hint}` : '',
+        requirement,
+      ].filter(Boolean).join(' ');
+    }).join(' | ');
+
     const summary = [
       tmpl.name,
       tmpl.doc_type_hint || '',
-      ...(fieldsByTemplate.get(tmpl.id) ?? []),
+      titleText,
+      descriptionText,
+      schemaSignalText,
     ].filter(Boolean).join(' | ');
 
     return {
@@ -181,31 +236,44 @@ async function loadCandidates(env: Env, bucketId: string): Promise<TemplateCandi
       name: tmpl.name,
       doc_type_hint: tmpl.doc_type_hint,
       summary,
+      normalizedName: normalizeText(tmpl.name),
+      normalizedHint: normalizeText(tmpl.doc_type_hint || ''),
+      nameTokens: toTokenSet(tmpl.name),
+      hintTokens: toTokenSet(tmpl.doc_type_hint || ''),
+      titleTokens: toTokenSet(titleText),
+      descriptionTokens: toTokenSet(descriptionText),
+      schemaTokens: toTokenSet(schemaSignalText),
+      summaryTokens: toTokenSet(summary),
     };
   });
 }
 
 function scoreLocal(docText: string, candidates: TemplateCandidate[]): LocalScore[] {
   const normalizedDoc = normalizeText(docText);
-  const docTokens = tokenize(normalizedDoc);
-  const docTokenSet = new Set(docTokens);
+  const docTokenSet = toTokenSet(normalizedDoc);
 
   const scores = candidates.map((candidate) => {
-    const summaryNormalized = normalizeText(candidate.summary);
-    const summaryTokens = tokenize(summaryNormalized);
-    const summarySet = new Set(summaryTokens);
+    const titleScore = overlapRatio(candidate.titleTokens, docTokenSet);
+    const descriptionScore = overlapRatio(candidate.descriptionTokens, docTokenSet);
+    const nameScore = overlapRatio(candidate.nameTokens, docTokenSet);
+    const hintScore = overlapRatio(candidate.hintTokens, docTokenSet);
+    const schemaScore = overlapRatio(candidate.schemaTokens, docTokenSet);
+    const summaryScore = overlapRatio(candidate.summaryTokens, docTokenSet);
 
-    let overlapCount = 0;
-    for (const token of summarySet) {
-      if (docTokenSet.has(token)) overlapCount += 1;
-    }
+    const namePhraseHit = candidate.normalizedName && normalizedDoc.includes(candidate.normalizedName) ? 1 : 0;
+    const hintPhraseHit = candidate.normalizedHint && normalizedDoc.includes(candidate.normalizedHint) ? 1 : 0;
 
-    const precision = summarySet.size ? overlapCount / summarySet.size : 0;
-    const recall = docTokenSet.size ? overlapCount / docTokenSet.size : 0;
-    const nameHit = normalizedDoc.includes(normalizeText(candidate.name)) ? 1 : 0;
-    const hintHit = candidate.doc_type_hint && normalizedDoc.includes(normalizeText(candidate.doc_type_hint)) ? 1 : 0;
-
-    const score = clamp01((precision * 0.65) + (recall * 0.2) + (nameHit * 0.1) + (hintHit ? 0.05 : 0));
+    // Weighted by product value: field titles/descriptions are the strongest routing signal.
+    const score = clamp01(
+      (titleScore * 0.38)
+      + (descriptionScore * 0.22)
+      + (nameScore * 0.12)
+      + (hintScore * 0.08)
+      + (schemaScore * 0.03)
+      + (summaryScore * 0.02)
+      + (namePhraseHit * 0.1)
+      + (hintPhraseHit * 0.05),
+    );
     return { templateId: candidate.id, score };
   });
 
@@ -339,6 +407,11 @@ async function saveClassification(env: Env, jobId: string, decision: Classificat
     .run();
 }
 
+async function clearClassification(env: Env, jobId: string): Promise<void> {
+  await env.DB.prepare(CLASSIFICATION_TABLE_SQL).run();
+  await env.DB.prepare('DELETE FROM job_classifications WHERE job_id = ?').bind(jobId).run();
+}
+
 export async function classifyJob(
   env: Env,
   args: { jobId: string; bucketId: string; ocrText: string; filename: string },
@@ -356,7 +429,7 @@ export async function classifyJob(
     suggestedTemplateId: top.templateId,
     confidence: clamp01(top.score),
     source: 'local',
-    reason: 'Local text overlap match',
+    reason: 'Local weighted template signal match',
     autoRun: top.score >= settings.autoRunThreshold,
   };
 
@@ -378,6 +451,12 @@ export async function classifyJob(
         autoRun: openAiDecision.confidence >= settings.autoRunThreshold,
       };
     }
+  }
+
+  // Avoid persisting weak guesses as defaults when evidence is sparse.
+  if (finalDecision.confidence < MIN_CLASSIFICATION_CONFIDENCE) {
+    await clearClassification(env, args.jobId);
+    return null;
   }
 
   await saveClassification(env, args.jobId, finalDecision);

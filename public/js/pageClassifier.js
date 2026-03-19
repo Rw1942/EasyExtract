@@ -17,7 +17,7 @@ let templateCacheModel = null;
 function normalizeText(value) {
   return String(value || '')
     .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -84,7 +84,17 @@ function jaccard(setA, setB) {
 function buildTemplateText(template) {
   const fields = Array.isArray(template.fields) ? template.fields : [];
   const fieldText = fields
-    .map((field) => [field.title, field.description, field.type].filter(Boolean).join(' '))
+    .map((field) => {
+      const requirement = field.required ? 'required' : 'optional';
+      return [
+        field.group_name ? `group ${field.group_name}` : '',
+        field.title,
+        field.description,
+        field.type ? `type ${field.type}` : '',
+        field.format_hint ? `format ${field.format_hint}` : '',
+        requirement,
+      ].filter(Boolean).join(' ');
+    })
     .join(' ');
 
   return [template.name, template.doc_type_hint, fieldText]
@@ -96,7 +106,16 @@ function buildTemplateCacheKey(templates) {
   return templates
     .map((template) => {
       const fields = Array.isArray(template.fields) ? template.fields : [];
-      const fieldSig = fields.map((f) => `${f.title || ''}:${f.type || ''}`).join('|');
+      const fieldSig = fields.map((f) => (
+        [
+          f.group_name || '',
+          f.title || '',
+          f.description || '',
+          f.type || '',
+          f.format_hint || '',
+          Number(f.required) ? '1' : '0',
+        ].join(':')
+      )).join('|');
       return `${template.id}:${template.name || ''}:${template.doc_type_hint || ''}:${fieldSig}`;
     })
     .join('||');

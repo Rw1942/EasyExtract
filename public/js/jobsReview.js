@@ -3,8 +3,25 @@ import { api, toast, esc, STATUS_LABELS, renderSingleRun } from './shared.js';
 import { showView, updateBreadcrumb } from './navigation.js';
 import { classifyPagesInWorker } from './pageClassifierWorkerClient.js';
 
-function classificationCacheKey(job, sourceText) {
-  return `${job.id}:${sourceText.length}:${job.status}:${job.runs?.length || 0}`;
+function classificationCacheKey(job, sourceText, templateSignature) {
+  return `${job.id}:${sourceText.length}:${job.status}:${job.runs?.length || 0}:${templateSignature}`;
+}
+
+function buildTemplateSignature(templates) {
+  return templates.map((template) => {
+    const fields = Array.isArray(template.fields) ? template.fields : [];
+    const fieldSig = fields.map((field) => (
+      [
+        field.group_name || '',
+        field.title || '',
+        field.description || '',
+        field.type || '',
+        field.format_hint || '',
+        Number(field.required) ? '1' : '0',
+      ].join(':')
+    )).join('|');
+    return `${template.id}:${template.name || ''}:${template.doc_type_hint || ''}:${fieldSig}`;
+  }).join('||');
 }
 
 function renderClassificationProgress(stateView) {
@@ -60,18 +77,26 @@ async function loadTemplatesForPageClassification() {
     return state.templateDetailCache[template.id];
   }));
 
-  return detailed
+  const normalized = detailed
     .filter((template) => Array.isArray(template.fields) && template.fields.length > 0)
     .map((template) => ({
       id: template.id,
       name: template.name,
       doc_type_hint: template.doc_type_hint,
       fields: template.fields.map((field) => ({
+        group_name: field.group_name,
         title: field.title,
         description: field.description,
         type: field.type,
+        format_hint: field.format_hint,
+        required: field.required,
       })),
     }));
+
+  return {
+    templates: normalized,
+    signature: buildTemplateSignature(normalized),
+  };
 }
 
 async function renderReviewPageClassification(job) {
@@ -93,9 +118,9 @@ async function renderReviewPageClassification(job) {
   });
 
   try {
-    const cacheKey = classificationCacheKey(job, sourceText);
+    const { templates, signature } = await loadTemplatesForPageClassification();
+    const cacheKey = classificationCacheKey(job, sourceText, signature);
     if (!state.pageClassificationCache[cacheKey]) {
-      const templates = await loadTemplatesForPageClassification();
       panel.innerHTML = renderClassificationProgress({
         caption: `Classifying ${sourceText.split('\n\n--- Page Break ---\n\n').length} pages in browser...`,
         donePages: 0,
