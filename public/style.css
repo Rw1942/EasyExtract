@@ -504,61 +504,6 @@ dialog pre {
 }
 dialog h3 { margin-bottom: 10px; }
 
-/* ── Setup banner ── */
-.setup-banner {
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
-  background: var(--warning-light);
-  border: 1px solid #fbbf24;
-  border-radius: var(--radius);
-  padding: 20px 24px;
-  margin-bottom: 24px;
-}
-.setup-banner-icon {
-  flex-shrink: 0;
-  width: 40px;
-  height: 40px;
-  background: #fef3c7;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #d97706;
-}
-.setup-banner-content { flex: 1; }
-.setup-banner h3 { font-size: 16px; font-weight: 700; margin-bottom: 6px; color: #92400e; }
-.setup-banner p { font-size: 14px; color: #78350f; margin-bottom: 12px; line-height: 1.5; }
-.setup-banner code { background: #fef3c7; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
-.setup-checklist { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
-.setup-check {
-  font-size: 13px;
-  padding: 5px 12px;
-  border-radius: 6px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 500;
-}
-.setup-check.ok { background: #d1fae5; color: #065f46; }
-.setup-check.missing { background: #fee2e2; color: #991b1b; }
-.setup-guide { margin-top: 14px; font-size: 13px; line-height: 1.7; }
-.setup-guide h4 { margin: 14px 0 6px; font-size: 14px; }
-.setup-guide ol { padding-left: 20px; margin-bottom: 10px; }
-.setup-guide pre {
-  background: #f7f7f8;
-  padding: 12px;
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  overflow-x: auto;
-  margin: 8px 0;
-  white-space: pre-wrap;
-  word-break: break-all;
-  border: 1px solid var(--border);
-}
-.setup-guide a { color: var(--primary); }
-details summary { cursor: pointer; color: var(--primary); font-size: 13px; font-weight: 600; }
-
 /* ── Debug log panel ── */
 #debugPanel {
   position: fixed;
@@ -1601,8 +1546,7 @@ form,
 .builder-card,
 .settings-section,
 .template-detail-section,
-.processing-card,
-.setup-banner {
+.processing-card {
   border-color: rgba(183, 196, 255, 0.34);
   background: var(--panel-bg);
   box-shadow: 0 10px 28px rgba(0, 62, 199, 0.06);

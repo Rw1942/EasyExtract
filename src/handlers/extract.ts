@@ -5,7 +5,7 @@ import { extract } from '../services/openai';
 
 export async function handleExtract(req: Request, env: Env, jobId: string): Promise<Response> {
   if (!env.OPENAI_API_KEY) {
-    return err(503, 'NOT_CONFIGURED', 'OpenAI is not configured. Add OPENAI_API_KEY to your .dev.vars file.');
+    return err(503, 'NOT_CONFIGURED', 'OpenAI is not configured. Add OPENAI_API_KEY with Wrangler secrets.');
   }
 
   const job = await env.DB.prepare('SELECT * FROM jobs WHERE id = ?').bind(jobId).first<Job>();
@@ -101,12 +101,14 @@ export async function handleListJobs(env: Env, url: URL): Promise<Response> {
   const from = url.searchParams.get('from');
   const to = url.searchParams.get('to');
 
-  let sql = `SELECT j.*, b.name as bucket_name, b.template_id as template_id, t.name as template_name,
-      CASE WHEN p.job_id IS NULL THEN 0 ELSE 1 END AS has_preview
-     FROM jobs j
-     LEFT JOIN buckets b ON j.bucket_id = b.id
-     LEFT JOIN templates t ON b.template_id = t.id
-     LEFT JOIN job_previews p ON p.job_id = j.id`;
+  let sql = [
+    'SELECT j.*, b.name as bucket_name, b.template_id as template_id, t.name as template_name,',
+    'CASE WHEN p.job_id IS NULL THEN 0 ELSE 1 END AS has_preview',
+    'FROM jobs j',
+    'LEFT JOIN buckets b ON j.bucket_id = b.id',
+    'LEFT JOIN templates t ON b.template_id = t.id',
+    'LEFT JOIN job_previews p ON p.job_id = j.id',
+  ].join(' ');
   const conditions: string[] = [];
   const binds: string[] = [];
 

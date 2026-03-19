@@ -42,45 +42,6 @@
   </header>
 
   <main>
-    <!-- Setup banner (shown when API keys are missing) -->
-    <div id="setupBanner" class="setup-banner" hidden>
-      <div class="setup-banner-icon">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-      </div>
-      <div class="setup-banner-content">
-        <h3>Set required API keys</h3>
-        <p>EasyExtract needs API keys for AI extraction and document reading. Add them with Wrangler secrets, then restart <code>wrangler dev</code>.</p>
-        <div id="setupChecklist" class="setup-checklist"></div>
-        <details>
-          <summary>Step-by-step setup guide</summary>
-          <div class="setup-guide">
-            <h4>1. OpenAI API Key</h4>
-            <ol>
-              <li>Go to <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com/api-keys</a></li>
-              <li>Click "Create new secret key"</li>
-              <li>Run <code>npx wrangler secret put OPENAI_API_KEY</code> and paste your key</li>
-            </ol>
-
-            <h4>2. Google Cloud Vision API</h4>
-            <ol>
-              <li>Go to <a href="https://console.cloud.google.com/apis/library/vision.googleapis.com" target="_blank">Cloud Vision API</a> and click <strong>Enable</strong></li>
-              <li>Go to <a href="https://console.cloud.google.com/iam-admin/serviceaccounts" target="_blank">Service Accounts</a></li>
-              <li>Create a service account (or use an existing one)</li>
-              <li>Click into the service account &rarr; Keys tab &rarr; Add Key &rarr; JSON</li>
-              <li>Open the downloaded JSON file, copy the entire contents onto one line</li>
-            </ol>
-
-            <h4>3. Add required Wrangler secrets</h4>
-            <pre>npx wrangler secret put OPENAI_API_KEY
-npx wrangler secret put GCP_SA_KEY
-npx wrangler secret put GCP_PROJECT_ID</pre>
-
-            <h4>4. Restart the dev server</h4>
-            <pre>npm run dev</pre>
-          </div>
-        </details>
-      </div>
-    </div>
 
     <!-- Home: marketing / wow page -->
     <section id="viewHome" class="view">

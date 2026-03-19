@@ -50,7 +50,7 @@ const TEMPLATE_SCHEMA = {
 
 export async function handleBuildTemplate(req: Request, env: Env): Promise<Response> {
   if (!env.OPENAI_API_KEY) {
-    return err(503, 'NOT_CONFIGURED', 'OpenAI is not configured. Add OPENAI_API_KEY to your .dev.vars file.');
+    return err(503, 'NOT_CONFIGURED', 'OpenAI is not configured. Add OPENAI_API_KEY with Wrangler secrets.');
   }
 
   const body = (await req.json()) as BuildRequest;

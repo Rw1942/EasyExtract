@@ -5,6 +5,12 @@ import { ocrPages } from '../services/documentAi';
 
 const OCR_BATCH_SIZE_DEFAULT = 16;
 const OCR_BATCH_SIZE_MAX = 16;
+const JOB_PREVIEWS_TABLE_SQL = `CREATE TABLE IF NOT EXISTS job_previews (
+  job_id TEXT PRIMARY KEY,
+  preview_page TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+)`;
 
 function normalizeBatchSize(value: string | null | undefined): number {
   const parsed = Number.parseInt(value ?? '', 10);
@@ -17,6 +23,17 @@ async function getOcrBatchSize(env: Env): Promise<number> {
     .bind('ocr_batch_size')
     .first<{ value: string }>();
   return normalizeBatchSize(row?.value);
+}
+
+async function ensureJobPreviewTable(env: Env): Promise<void> {
+  await env.DB.prepare(JOB_PREVIEWS_TABLE_SQL).run();
+}
+
+async function persistPreviewPage(env: Env, jobId: string, firstPage: string | undefined): Promise<void> {
+  if (typeof firstPage !== 'string' || firstPage.length === 0) return;
+  await env.DB.prepare('INSERT OR REPLACE INTO job_previews (job_id, preview_page) VALUES (?, ?)')
+    .bind(jobId, firstPage)
+    .run();
 }
 
 async function processOcrInBackground(
@@ -45,7 +62,7 @@ export async function handleUpload(
   ctx: ExecutionContext,
 ): Promise<Response> {
   if (!env.GCP_SA_KEY || !env.GCP_PROJECT_ID) {
-    return err(503, 'NOT_CONFIGURED', 'Google Cloud Vision is not configured. Add GCP_SA_KEY and GCP_PROJECT_ID to your .dev.vars file.');
+    return err(503, 'NOT_CONFIGURED', 'Google Cloud Vision is not configured. Add GCP_SA_KEY and GCP_PROJECT_ID with Wrangler secrets.');
   }
 
   const bucket = await env.DB.prepare('SELECT id FROM buckets WHERE id = ?').bind(bucketId).first();
@@ -61,25 +78,13 @@ export async function handleUpload(
   const batchSize = await getOcrBatchSize(env);
 
   // Persist a first-page preview so review screens can render source side-by-side with extracted data.
-  await env.DB.prepare(
-    `CREATE TABLE IF NOT EXISTS job_previews (
-      job_id TEXT PRIMARY KEY,
-      preview_page TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
-    )`,
-  ).run();
+  await ensureJobPreviewTable(env);
 
   await env.DB.prepare('INSERT INTO jobs (id, bucket_id, filename, status, page_count) VALUES (?, ?, ?, ?, ?)')
     .bind(jobId, bucketId, body.filename, 'ocr', body.pages.length)
     .run();
 
-  const firstPage = body.pages[0];
-  if (typeof firstPage === 'string' && firstPage.length > 0) {
-    await env.DB.prepare('INSERT OR REPLACE INTO job_previews (job_id, preview_page) VALUES (?, ?)')
-      .bind(jobId, firstPage)
-      .run();
-  }
+  await persistPreviewPage(env, jobId, body.pages[0]);
 
   ctx.waitUntil(
     processOcrInBackground(env, jobId, body.pages, batchSize),
