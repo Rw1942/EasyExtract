@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "wrangler dev",
+    "deploy:safe": "./scripts/deploy-safe.sh",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
     "db:migrate": "wrangler d1 execute easyextract-db --local --file=src/db/schema.sql"

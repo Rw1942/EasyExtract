@@ -41,7 +41,17 @@ async function getBucket(env: Env, id: string): Promise<Response> {
     .bind(id)
     .all<Job>();
 
-  return ok({ ...bucket, jobs });
+  // Aggregated job stats for the bucket header
+  const stats = await env.DB.prepare(
+    `SELECT COUNT(*) as total,
+       SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) as done_count,
+       SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_count,
+       SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as error_count,
+       SUM(CASE WHEN status = 'ocr' THEN 1 ELSE 0 END) as ocr_count
+     FROM jobs WHERE bucket_id = ?`,
+  ).bind(id).first();
+
+  return ok({ ...bucket, jobs, stats });
 }
 
 async function createBucket(req: Request, env: Env): Promise<Response> {

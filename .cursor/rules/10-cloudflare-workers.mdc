@@ -35,3 +35,54 @@ alwaysApply: true
   - never log OpenAI keys
   - never log Google service account keys
   - avoid logging raw OCR text unless explicitly in a dev-only path
+
+## Deployment standard (idiot-proof, required)
+- Standard deployment command is `npm run deploy:safe`.
+- Do not use raw `wrangler deploy` for normal releases.
+- Use `npm run deploy` directly only for break-glass debugging.
+- Every production deployment must follow this exact order:
+  1. Preflight checks
+  2. Secrets/vars verification
+  3. Deploy
+  4. Post-deploy health verification
+- Never assume local `.dev.vars` exists in production.
+- Never declare secrets in `wrangler.toml`.
+
+### Required keys for this project
+- Secrets:
+  - `OPENAI_API_KEY`
+  - `GCP_SA_KEY`
+- Config (secret or variable):
+  - `GCP_PROJECT_ID`
+
+### Preflight commands (run before deploy)
+- `npm run typecheck`
+- `wrangler secret list`
+- `curl -s https://<worker-domain>/api/health` (if already deployed)
+
+### One-time or update secret commands
+- `wrangler secret put OPENAI_API_KEY`
+- `wrangler secret put GCP_SA_KEY`
+- `wrangler secret put GCP_PROJECT_ID` (allowed as secret for consistency)
+
+### Deploy command (required)
+- `npm run deploy:safe`
+- Optional URL override:
+  - `HEALTH_URL=https://<worker-domain>/api/health npm run deploy:safe`
+  - `./scripts/deploy-safe.sh --url https://<worker-domain>`
+
+### Post-deploy verification (must pass)
+- `curl -s https://<worker-domain>/api/health`
+- Expected:
+  - `ready: true`
+  - `services.openai: true`
+  - `services.gcp_sa: true`
+  - `services.gcp_project: true`
+  - `services.db: true`
+
+### Failure recovery playbook
+- If setup banner appears or `ready: false`:
+  1. Run `wrangler secret list` and confirm required keys exist.
+  2. Re-run missing `wrangler secret put <KEY>` commands.
+  3. Re-run `npm run deploy:safe`.
+  4. Re-check `/api/health` until `ready: true`.

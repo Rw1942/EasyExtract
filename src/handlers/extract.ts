@@ -69,7 +69,9 @@ export async function handleGetJob(env: Env, jobId: string): Promise<Response> {
   if (!job) return err(404, 'NOT_FOUND', 'Job not found');
 
   const { results: runs } = await env.DB.prepare(
-    'SELECT * FROM runs WHERE job_id = ? ORDER BY created_at DESC',
+    `SELECT r.*, t.name as template_name
+     FROM runs r LEFT JOIN templates t ON r.template_id = t.id
+     WHERE r.job_id = ? ORDER BY r.created_at DESC`,
   )
     .bind(jobId)
     .all();
@@ -80,6 +82,30 @@ export async function handleGetJob(env: Env, jobId: string): Promise<Response> {
   }));
 
   return ok({ ...job, runs: parsed });
+}
+
+/** List all jobs across buckets — supports ?status= and ?search= filters. */
+export async function handleListJobs(env: Env, url: URL): Promise<Response> {
+  const status = url.searchParams.get('status');
+  const search = url.searchParams.get('search');
+
+  let sql = `SELECT j.*, b.name as bucket_name, t.name as template_name
+     FROM jobs j
+     LEFT JOIN buckets b ON j.bucket_id = b.id
+     LEFT JOIN templates t ON b.template_id = t.id`;
+  const conditions: string[] = [];
+  const binds: string[] = [];
+
+  if (status) { conditions.push('j.status = ?'); binds.push(status); }
+  if (search) { conditions.push('j.filename LIKE ?'); binds.push(`%${search}%`); }
+  if (conditions.length) sql += ' WHERE ' + conditions.join(' AND ');
+  sql += ' ORDER BY j.created_at DESC LIMIT 200';
+
+  let stmt = env.DB.prepare(sql);
+  for (const b of binds) stmt = stmt.bind(b);
+  const { results } = await stmt.all();
+
+  return ok(results);
 }
 
 export async function handleDeleteJob(env: Env, jobId: string): Promise<Response> {

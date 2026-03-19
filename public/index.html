@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Upload PDFs and extract structured data with AI">
+  <meta name="description" content="Turn PDFs into structured data in seconds — powered by AI">
   <title>EasyExtract</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📄</text></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -21,6 +21,10 @@
       <button class="nav-tab" id="navBuckets" onclick="goHome()">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
         Buckets
+      </button>
+      <button class="nav-tab" id="navDocuments" onclick="showAllDocuments()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        Documents
       </button>
       <button class="nav-tab" id="navTemplates" onclick="goToTemplates()">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
@@ -40,8 +44,8 @@
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
       </div>
       <div class="setup-banner-content">
-        <h3>Setup Required</h3>
-        <p>EasyExtract needs API keys to process documents. Edit <code>.dev.vars</code> in the project root, then restart <code>wrangler dev</code>.</p>
+        <h3>Almost there — connect your services</h3>
+        <p>EasyExtract needs API keys for AI extraction and document reading. Add them to <code>.dev.vars</code> in the project root, then restart <code>wrangler dev</code>.</p>
         <div id="setupChecklist" class="setup-checklist"></div>
         <details>
           <summary>Step-by-step setup guide</summary>
@@ -79,7 +83,7 @@ GCP_PROJECT_ID=your-project-id</pre>
       <div class="toolbar">
         <div>
           <h2>Buckets</h2>
-          <p class="toolbar-sub">Each bucket holds documents of one type, extracted with a shared template.</p>
+          <p class="toolbar-sub">Organize your documents by type — each bucket extracts data using a template you choose.</p>
         </div>
         <div class="toolbar-actions">
           <button class="ai-btn" onclick="showTemplateBuilder()">
@@ -108,17 +112,19 @@ GCP_PROJECT_ID=your-project-id</pre>
             Export CSV
           </button>
           <button onclick="openUploadZone()">+ Upload PDFs</button>
+          <button id="btnReExtractAll" onclick="showReExtractPanel()" hidden>Re-extract All</button>
           <button class="primary" id="btnRunAll" onclick="runAllPending()">Extract All</button>
         </div>
       </div>
 
       <div id="bucketInfoBar" class="bucket-info-bar" hidden></div>
+      <div id="reExtractPanel" class="re-extract-panel" hidden></div>
 
       <div id="uploadZone" class="upload-zone" hidden>
         <div class="drop-area" id="dropArea">
           <svg class="drop-icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
           <p>Drop PDF files here or <label class="file-label">browse<input type="file" id="fileInput" accept=".pdf" multiple></label></p>
-          <span class="drop-hint">Supports multi-page PDF documents</span>
+          <span class="drop-hint">Multi-page PDFs supported — upload as many as you need</span>
         </div>
       </div>
 
@@ -135,17 +141,17 @@ GCP_PROJECT_ID=your-project-id</pre>
         <div class="pc-steps">
           <div class="pc-step" id="pcStep0">
             <span class="pc-dot"></span>
-            <span class="pc-step-label">Convert pages to images</span>
+            <span class="pc-step-label">Preparing pages</span>
             <span class="pc-step-extra" id="pcExtra0"></span>
           </div>
           <div class="pc-step" id="pcStep1">
             <span class="pc-dot"></span>
-            <span class="pc-step-label">Upload to server</span>
+            <span class="pc-step-label">Uploading document</span>
             <span class="pc-step-extra" id="pcExtra1"></span>
           </div>
           <div class="pc-step" id="pcStep2">
             <span class="pc-dot"></span>
-            <span class="pc-step-label">Read document text (OCR)</span>
+            <span class="pc-step-label">Reading document text</span>
             <span class="pc-step-extra" id="pcExtra2"></span>
           </div>
         </div>
@@ -160,7 +166,55 @@ GCP_PROJECT_ID=your-project-id</pre>
           <tbody id="jobsBody"></tbody>
         </table>
       </div>
-      <p id="noJobs" class="empty-state" hidden>No documents yet. Upload some PDFs to get started.</p>
+      <p id="noJobs" class="empty-state" hidden>This bucket is empty. Drop some PDFs above to get started.</p>
+    </section>
+
+    <!-- All Documents view -->
+    <section id="viewAllDocuments" class="view" hidden>
+      <div class="toolbar">
+        <div>
+          <h2>All Documents</h2>
+          <p class="toolbar-sub">Find any document you've uploaded — search, filter, and jump straight to results.</p>
+        </div>
+      </div>
+      <div class="docs-filters">
+        <input type="text" id="docsSearchInput" placeholder="Search documents…" class="docs-search" oninput="filterAllDocuments()">
+        <select id="docsStatusFilter" class="docs-status-filter" onchange="filterAllDocuments()">
+          <option value="">All statuses</option>
+          <option value="done">Extracted</option>
+          <option value="pending">Ready</option>
+          <option value="ocr">Processing</option>
+          <option value="extracting">Extracting</option>
+          <option value="error">Failed</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <table id="allDocsTable">
+          <thead>
+            <tr><th>File</th><th>Bucket</th><th>Pages</th><th>Status</th><th>Template</th><th>Date</th></tr>
+          </thead>
+          <tbody id="allDocsBody"></tbody>
+        </table>
+      </div>
+      <p id="noDocsMessage" class="empty-state" hidden>No documents match your search. Try a different filter or upload new files.</p>
+    </section>
+
+    <!-- Template detail -->
+    <section id="viewTemplateDetail" class="view" hidden>
+      <div class="toolbar">
+        <div>
+          <h2 id="templateDetailName"></h2>
+          <p class="toolbar-sub" id="templateDetailHint"></p>
+        </div>
+        <div class="toolbar-actions">
+          <button onclick="editTemplate(getViewingTemplateId())">Edit Fields</button>
+          <button onclick="duplicateTemplate(getViewingTemplateId())">Duplicate</button>
+          <button class="danger" onclick="deleteTemplate(getViewingTemplateId())">Delete</button>
+        </div>
+      </div>
+      <div id="templateDetailFields" class="template-detail-section"></div>
+      <div id="templateDetailBuckets" class="template-detail-section"></div>
+      <div id="templateDetailRuns" class="template-detail-section"></div>
     </section>
 
     <!-- Template list -->
@@ -168,7 +222,7 @@ GCP_PROJECT_ID=your-project-id</pre>
       <div class="toolbar">
         <div>
           <h2>Templates</h2>
-          <p class="toolbar-sub">Templates define which fields to extract from documents in a bucket.</p>
+          <p class="toolbar-sub">Templates tell AI exactly what data to pull from your documents.</p>
         </div>
         <div class="toolbar-actions">
           <button onclick="showTemplateEditor()">+ Manual</button>
@@ -188,7 +242,7 @@ GCP_PROJECT_ID=your-project-id</pre>
         <label>Template Name
           <input type="text" id="tmplName" required placeholder="e.g. Income Statement">
         </label>
-        <label>Document Type Hint
+        <label>Document Type
           <input type="text" id="tmplDocType" placeholder="e.g. Income statement, Bank statement">
         </label>
 
@@ -213,7 +267,7 @@ GCP_PROJECT_ID=your-project-id</pre>
           <input type="text" id="bucketNameInput" required placeholder="e.g. Q4 Investor Decks, Borrower Financials">
         </label>
         <label>Extraction Template
-          <p class="field-hint">Every document uploaded to this bucket will be extracted using this template's fields.</p>
+          <p class="field-hint">This template's fields will be used by default when extracting documents in this bucket. You can always override it per file.</p>
           <select id="bucketTemplateSelect" required onchange="previewTemplate(this.value)"></select>
         </label>
         <div class="create-template-link">
@@ -233,7 +287,7 @@ GCP_PROJECT_ID=your-project-id</pre>
       <div class="toolbar">
         <div>
           <h2>Build Template with AI</h2>
-          <p class="toolbar-sub">Describe the data you need — AI generates the extraction fields for you.</p>
+          <p class="toolbar-sub">Just describe what you need in plain English — AI designs the perfect template for you.</p>
         </div>
         <div class="toolbar-actions">
           <button type="button" onclick="goBack()">Cancel</button>
@@ -244,10 +298,10 @@ GCP_PROJECT_ID=your-project-id</pre>
       <div id="builderInput">
         <div class="builder-card">
           <label class="builder-label">
-            What data do you want to extract?
-            <span class="builder-label-hint">Be specific — mention field names, document type, and anything distinctive about where values appear.</span>
+            What data do you need from your documents?
+            <span class="builder-label-hint">The more detail you give, the better. Mention field names, document type, and where values typically appear.</span>
             <textarea id="builderDesc" class="builder-textarea" rows="5"
-              placeholder="e.g. I need to pull out the company name, total revenue, net income, and reporting period from quarterly earnings reports. Revenue is usually near the top of the income statement section."></textarea>
+              placeholder="e.g. I need to extract company name, total revenue, net income, and reporting period from quarterly earnings reports. Revenue is usually at the top of the income statement."></textarea>
           </label>
         </div>
 
@@ -256,7 +310,7 @@ GCP_PROJECT_ID=your-project-id</pre>
             Sample document
             <span class="optional-tag">optional</span>
           </p>
-          <p class="builder-label-hint">Upload a PDF example — AI will analyze its layout for more accurate field suggestions. Only the first 3 pages are sent.</p>
+          <p class="builder-label-hint">Upload a sample PDF so AI can study the layout and suggest more accurate fields. Only the first 3 pages are used.</p>
           <div class="drop-area builder-drop" id="builderDropArea">
             <div id="builderDropPrompt">
               <svg class="drop-icon-sm" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -292,7 +346,7 @@ GCP_PROJECT_ID=your-project-id</pre>
       <div id="builderReview" hidden>
         <div class="builder-success">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-          Template generated — review the fields below and adjust if needed before saving.
+          Your template is ready! Review the fields below and tweak anything before saving.
         </div>
         <form id="builderForm" onsubmit="saveBuiltTemplate(event)">
           <label>Template Name
@@ -319,7 +373,7 @@ GCP_PROJECT_ID=your-project-id</pre>
       <div class="toolbar">
         <div>
           <h2>Settings</h2>
-          <p class="toolbar-sub">Customize the AI prompts used for extraction and template building.</p>
+          <p class="toolbar-sub">Fine-tune how AI reads your documents and builds templates.</p>
         </div>
         <div class="toolbar-actions">
           <button onclick="goBack()">Cancel</button>
@@ -330,11 +384,11 @@ GCP_PROJECT_ID=your-project-id</pre>
       <div class="settings-section">
         <div class="settings-section-header">
           <div>
-            <h3>Extraction Instructions <span class="prompt-badge">Runs on every document</span></h3>
+            <h3>Extraction Instructions <span class="prompt-badge">Applied to every document</span></h3>
             <p class="settings-desc">
-              Sent to the AI each time it reads a document and fills in your template fields.
-              Use <code>{{fields}}</code> as a placeholder — EasyExtract replaces it with the field list from
-              your template automatically. If you leave out <code>{{fields}}</code>, the field list is appended at the end.
+              These instructions guide AI when it reads a document and fills in your template fields.
+              Use <code>{{fields}}</code> as a placeholder — it's automatically replaced with your template's field list.
+              If you omit <code>{{fields}}</code>, the field list is appended at the end.
             </p>
           </div>
           <button class="small" onclick="resetPrompt('extraction_prompt')">Reset to default</button>
@@ -370,10 +424,10 @@ GCP_PROJECT_ID=your-project-id</pre>
       <div class="settings-section">
         <div class="settings-section-header">
           <div>
-            <h3>Template Builder Instructions <span class="prompt-badge">Used in AI template builder</span></h3>
+            <h3>Template Builder Instructions <span class="prompt-badge">Powers "Build with AI"</span></h3>
             <p class="settings-desc">
-              Guides the AI when you click "Build with AI" to generate a new template from a plain-text description.
-              Adjust naming conventions, field style, or add domain-specific rules — for example, always use short titles
+              Controls how AI generates templates from your descriptions.
+              Customize naming conventions, field types, or add domain rules — e.g., always use short titles
               or always mark revenue fields as required.
             </p>
           </div>

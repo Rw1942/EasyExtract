@@ -8,10 +8,21 @@ let healthStatus = null;
 // ── State ──
 let currentBucket = null;
 let editingTemplateId = null;
+let viewingTemplateId = null;     // template detail view
 let navStack = ['dashboard'];
 let afterTemplateSaved = null;    // callback after any template is created
 let pendingTemplateSelect = null; // ID to auto-select in showNewBucket()
 let pollingBucketId = null;       // tracks active polling target
+let allTemplatesCache = null;     // cached template list for per-file selectors
+let allDocsCache = null;          // cached docs for the All Documents view
+
+/** Load and cache the template list. Invalidated on create/edit/delete. */
+async function ensureTemplatesLoaded() {
+  if (!allTemplatesCache) allTemplatesCache = await api('/templates');
+  return allTemplatesCache;
+}
+
+function invalidateTemplateCache() { allTemplatesCache = null; }
 
 // ── Processing card ──
 function pcShow(filename, bucketName) {
@@ -157,6 +168,8 @@ function goBack() {
   if (prev === 'dashboard') showDashboard();
   else if (prev === 'templateList') showTemplateList();
   else if (prev === 'templateBuilder') showTemplateBuilder();
+  else if (prev === 'allDocuments') showAllDocuments();
+  else if (prev.startsWith('templateDetail:')) showTemplateDetail(prev.split(':')[1], true);
   else if (prev.startsWith('bucket:')) openBucket(prev.split(':')[1], true);
 }
 
@@ -172,13 +185,18 @@ function goToTemplates() {
 
 function setActiveTab(tab) {
   document.getElementById('navBuckets').classList.toggle('active', tab === 'buckets');
+  document.getElementById('navDocuments').classList.toggle('active', tab === 'documents');
   document.getElementById('navTemplates').classList.toggle('active', tab === 'templates');
 }
 
 function updateBreadcrumb(parts) {
   const section = parts[0]?.label;
-  const isSection = section === 'Buckets' || section === 'Templates';
-  setActiveTab(section === 'Buckets' ? 'buckets' : section === 'Templates' ? 'templates' : '');
+  const isSection = section === 'Buckets' || section === 'Templates' || section === 'Documents';
+  setActiveTab(
+    section === 'Buckets' ? 'buckets'
+    : section === 'Documents' ? 'documents'
+    : section === 'Templates' ? 'templates' : ''
+  );
 
   const trail = isSection ? parts.slice(1) : parts;
   const bc = document.getElementById('breadcrumb');
@@ -209,41 +227,48 @@ async function showDashboard() {
       empty.hidden = false;
       empty.innerHTML = `
         <h3>Welcome to EasyExtract</h3>
-        <p>Upload PDFs and pull out structured data automatically. Here's how it works:</p>
+        <p>Turn any PDF into structured, usable data — in seconds, not hours. Here's how:</p>
         <div class="onboarding-steps">
           <div class="onboarding-step">
-            <div class="step-num">Step 1</div>
+            <div class="step-num">1</div>
             <h4>Create a Template</h4>
-            <p>Define the fields to extract — like Revenue, Date, or Account Number.</p>
+            <p>Tell AI what data you need — revenue, dates, account numbers, line items — anything.</p>
           </div>
           <div class="onboarding-step">
-            <div class="step-num">Step 2</div>
+            <div class="step-num">2</div>
             <h4>Create a Bucket</h4>
-            <p>A bucket groups similar documents, like "Q4 Decks" or "Loan Applications."</p>
+            <p>Group similar documents together, like "Q4 Reports" or "Loan Applications."</p>
           </div>
           <div class="onboarding-step">
-            <div class="step-num">Step 3</div>
+            <div class="step-num">3</div>
             <h4>Upload &amp; Extract</h4>
-            <p>Upload PDFs and AI reads each one and fills in your template fields.</p>
+            <p>Drop your PDFs in and AI instantly reads and extracts your data — ready to export.</p>
           </div>
         </div>
-        <button class="primary" onclick="showTemplateList()">Get started — create a template</button>
+        <button class="primary" onclick="showTemplateList()">Get Started</button>
       `;
       await seedStarterTemplates();
       return;
     }
 
     empty.hidden = true;
-    grid.innerHTML = buckets.map(b => `
+    grid.innerHTML = buckets.map(b => {
+      const count = b.job_count || 0;
+      return `
       <div class="card" onclick="openBucket('${b.id}')">
         <h3>${esc(b.name)}</h3>
-        <div><span class="template-tag">${esc(b.template_name || 'No template')}</span></div>
-        <p class="card-doc-count">${b.job_count || 0} document${b.job_count !== 1 ? 's' : ''}</p>
+        <div style="margin-bottom:10px"><span class="template-tag">${esc(b.template_name || 'No template')}</span></div>
+        <div class="card-stat-row">
+          <span class="card-stat-label">Documents</span>
+          <span class="card-stat-value">${count}</span>
+        </div>
         <div class="card-actions">
+          <button class="small primary" onclick="event.stopPropagation(); quickUpload('${b.id}')">Upload</button>
+          <button class="small" onclick="event.stopPropagation(); openBucket('${b.id}')">Open</button>
           <button class="small danger" onclick="event.stopPropagation(); deleteBucket('${b.id}')">Delete</button>
         </div>
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
   } catch (e) {
     toast('Failed to load buckets: ' + e.message);
   }
@@ -266,7 +291,10 @@ async function openBucket(id, isBack) {
 
     renderBucketInfoBar(data);
 
-    renderJobs(data.jobs || []);
+    // Hide re-extract panel on reload
+    document.getElementById('reExtractPanel').hidden = true;
+
+    await renderJobs(data.jobs || []);
 
     const inProgress = (data.jobs || []).some(j => j.status === 'ocr' || j.status === 'extracting');
     pollingBucketId = inProgress ? data.id : null;
@@ -287,13 +315,32 @@ function renderBucketInfoBar(data) {
   const infoBar = document.getElementById('bucketInfoBar');
   if (!data.template_name && !data.template_id) { infoBar.hidden = true; return; }
   infoBar.hidden = false;
+
+  // Build stats line from aggregated counts
+  const s = data.stats || {};
+  const statParts = [];
+  if (s.done_count) statParts.push(`<span class="stat-done">${s.done_count} extracted</span>`);
+  if (s.pending_count) statParts.push(`<span class="stat-pending">${s.pending_count} ready</span>`);
+  if (s.ocr_count) statParts.push(`<span class="stat-ocr">${s.ocr_count} processing</span>`);
+  if (s.error_count) statParts.push(`<span class="stat-error">${s.error_count} failed</span>`);
+  const statsHtml = statParts.length
+    ? `<div class="bucket-stats">${s.total || 0} document${s.total !== 1 ? 's' : ''}: ${statParts.join(' · ')}</div>`
+    : '';
+
   infoBar.innerHTML = `
-    <span>Template: <strong>${esc(data.template_name || data.template_id)}</strong></span>
+    <div style="flex:1">
+      <span>Template: <strong>${esc(data.template_name || data.template_id)}</strong></span>
+      ${statsHtml}
+    </div>
     <div class="info-bar-actions">
-      <a onclick="editTemplate('${data.template_id}')">Edit fields</a>
+      <a onclick="editTemplate('${data.template_id}')">Edit Fields</a>
       <button class="small" onclick="changeBucketTemplate()">Change</button>
     </div>
   `;
+
+  // Show/hide re-extract button based on done/error count
+  const reBtn = document.getElementById('btnReExtractAll');
+  if (reBtn) reBtn.hidden = !(s.done_count || s.error_count);
 }
 
 async function changeBucketTemplate() {
@@ -302,7 +349,7 @@ async function changeBucketTemplate() {
 
   let templates;
   try {
-    templates = await api('/templates');
+    templates = await ensureTemplatesLoaded();
   } catch (e) {
     toast('Failed to load templates: ' + e.message);
     renderBucketInfoBar(currentBucket);
@@ -310,7 +357,7 @@ async function changeBucketTemplate() {
   }
 
   if (!templates.length) {
-    toast('No templates available. Create one first.');
+    toast('No templates yet — create one to get started.');
     renderBucketInfoBar(currentBucket);
     return;
   }
@@ -352,7 +399,7 @@ async function applyBucketTemplate() {
     currentBucket.template_id = newTemplateId;
     currentBucket.template_name = newTemplateName;
     renderBucketInfoBar(currentBucket);
-    toast(`Template changed to "${newTemplateName}" — pending documents will use this template on next extraction`, 5000, 'success');
+    toast(`Template updated to "${newTemplateName}" — new extractions will use this template`, 5000, 'success');
   } catch (e) {
     toast('Failed to update template: ' + e.message);
     renderBucketInfoBar(currentBucket);
@@ -375,17 +422,17 @@ function openBuilderFromBucket() {
 }
 
 const STATUS_LABELS = {
-  ocr:        'Reading text…',
-  pending:    'Ready to extract',
-  extracting: 'Extracting…',
-  done:       'Complete',
+  ocr:        'Processing',
+  pending:    'Ready',
+  extracting: 'Extracting',
+  done:       'Extracted',
   error:      'Failed',
 };
 
 let expandedJobId = null;
 const jobDetailCache = {};
 
-function renderJobs(jobs) {
+async function renderJobs(jobs) {
   expandedJobId = null;
   const tbody = document.getElementById('jobsBody');
   const empty = document.getElementById('noJobs');
@@ -400,14 +447,30 @@ function renderJobs(jobs) {
   empty.hidden = true;
   const hasDone = jobs.some(j => j.status === 'done');
   if (exportBtn) exportBtn.hidden = !hasDone;
+
+  // Load templates for the per-file selector dropdown
+  const templates = await ensureTemplatesLoaded();
+  const defaultTmplId = currentBucket?.template_id;
+
   tbody.innerHTML = jobs.map(j => {
     const expandable = j.status === 'done' || j.status === 'error';
-    const actions = j.status === 'pending'
-      ? `<button class="small primary" onclick="event.stopPropagation(); runExtraction('${j.id}', this)">Extract</button>`
-      : (j.status === 'done' || j.status === 'error')
-        ? `<button class="small" onclick="event.stopPropagation(); reRunExtraction('${j.id}', this)">Re-extract</button>
-           <button class="small danger" onclick="event.stopPropagation(); deleteJob('${j.id}')">Delete</button>`
-        : '';
+    const canExtract = j.status === 'pending' || j.status === 'done' || j.status === 'error';
+
+    // Build template selector + action buttons for extractable jobs
+    let actions = '';
+    if (canExtract) {
+      const opts = templates.map(t =>
+        `<option value="${t.id}"${t.id === defaultTmplId ? ' selected' : ''}>${esc(t.name)}${t.id === defaultTmplId ? ' (default)' : ''}</option>`
+      ).join('');
+      const selectHtml = `<select class="template-select" id="tmpl-select-${j.id}" onclick="event.stopPropagation()" title="Choose extraction template">${opts}</select>`;
+
+      if (j.status === 'pending') {
+        actions = `${selectHtml}<button class="small primary" onclick="event.stopPropagation(); runExtraction('${j.id}', this)">Extract</button>`;
+      } else {
+        actions = `${selectHtml}<button class="small" onclick="event.stopPropagation(); reRunExtraction('${j.id}', this)">Re-extract</button>
+           <button class="small danger" onclick="event.stopPropagation(); deleteJob('${j.id}')">Delete</button>`;
+      }
+    }
 
     return `
       <tr class="job-row${expandable ? ' expandable' : ''}" ${expandable ? `onclick="toggleJobDetail('${j.id}')" data-job-id="${j.id}"` : ''}>
@@ -416,7 +479,7 @@ function renderJobs(jobs) {
         </td>
         <td>${j.page_count ?? '—'}</td>
         <td><span class="status-badge status-${j.status}">${STATUS_LABELS[j.status] || j.status}</span></td>
-        <td>${actions}</td>
+        <td class="actions-cell">${actions}</td>
       </tr>
       <tr class="job-detail-row" id="detail-${j.id}">
         <td colspan="4" class="job-detail-cell">
@@ -452,7 +515,7 @@ async function toggleJobDetail(jobId) {
   }
 
   // Open: show loading, expand, then populate
-  inner.innerHTML = `<div class="detail-loading"><span class="detail-spinner"></span> Loading…</div>`;
+  inner.innerHTML = `<div class="detail-loading"><span class="detail-spinner"></span> Loading results…</div>`;
   wrap.classList.add('open');
   chevron.textContent = '▾';
   expandedJobId = jobId;
@@ -461,7 +524,7 @@ async function toggleJobDetail(jobId) {
     try {
       jobDetailCache[jobId] = await api(`/jobs/${jobId}`);
     } catch (e) {
-      inner.innerHTML = `<div class="detail-error-box"><strong>Failed to load</strong><p>${esc(e.message)}</p></div>`;
+      inner.innerHTML = `<div class="detail-error-box"><strong>Couldn't load results</strong><p>${esc(e.message)}</p></div>`;
       return;
     }
   }
@@ -470,22 +533,54 @@ async function toggleJobDetail(jobId) {
 }
 
 function renderJobDetail(jobData) {
-  const run = jobData.runs?.[0];
-  if (!run) return `<div class="detail-empty">No extraction run yet.</div>`;
+  const runs = jobData.runs || [];
+  if (!runs.length) return `<div class="detail-empty">No data extracted yet — click Extract to get started.</div>`;
 
+  // Single run — render directly without tabs
+  if (runs.length === 1) return renderSingleRun(runs[0]);
+
+  // Multiple runs — render tabs
+  const tabs = runs.map((run, i) => {
+    const label = run.template_name || 'Unknown template';
+    const date = new Date(run.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return `<button class="run-tab${i === 0 ? ' active' : ''}" onclick="switchRunTab(this, ${i})" data-run-idx="${i}">${esc(label)} (${date})</button>`;
+  }).join('');
+
+  const panels = runs.map((run, i) =>
+    `<div class="run-panel${i === 0 ? ' active' : ''}" data-run-idx="${i}">
+      <div class="run-meta">
+        <span>Template: <strong>${esc(run.template_name || 'Unknown')}</strong></span>
+        <span>${new Date(run.created_at).toLocaleString()}</span>
+        <span class="status-badge status-${run.status}">${STATUS_LABELS[run.status] || run.status}</span>
+      </div>
+      ${renderSingleRun(run)}
+    </div>`
+  ).join('');
+
+  return `<div class="run-tabs">${tabs}</div>${panels}`;
+}
+
+function switchRunTab(tab, idx) {
+  const container = tab.closest('.job-detail-inner');
+  container.querySelectorAll('.run-tab').forEach(t => t.classList.remove('active'));
+  container.querySelectorAll('.run-panel').forEach(p => p.classList.remove('active'));
+  tab.classList.add('active');
+  container.querySelector(`.run-panel[data-run-idx="${idx}"]`).classList.add('active');
+}
+
+function renderSingleRun(run) {
   if (run.status === 'error') {
-    return `<div class="detail-error-box"><strong>Extraction failed</strong><p>${esc(run.error || 'Unknown error')}</p></div>`;
+    return `<div class="detail-error-box"><strong>Something went wrong</strong><p>${esc(run.error || 'An unexpected error occurred. Try re-extracting or using a different template.')}</p></div>`;
   }
 
   let result = run.result;
-  // Result may arrive as a JSON-encoded string from the server
   if (typeof result === 'string') {
     try { result = JSON.parse(result); } catch {}
   }
-  if (!result || typeof result !== 'object') return `<div class="detail-empty">No data extracted.</div>`;
+  if (!result || typeof result !== 'object') return `<div class="detail-empty">No data was found in this document.</div>`;
 
   const entries = Object.entries(result);
-  if (!entries.length) return `<div class="detail-empty">No fields were extracted.</div>`;
+  if (!entries.length) return `<div class="detail-empty">The document was processed but no matching fields were found. Try adjusting your template.</div>`;
 
   return `<table class="result-fields">
     <tbody>
@@ -599,12 +694,12 @@ async function handleFiles(files) {
   if (!currentBucket) return;
 
   if (healthStatus && !healthStatus.services.gcp_sa) {
-    toast('Google Cloud Vision is not configured yet. Check the setup guide at the top of the page.');
+    toast('Document reading isn\'t set up yet. Follow the setup guide at the top of the page.');
     return;
   }
 
   const pdfFiles = Array.from(files).filter(f => f.type === 'application/pdf');
-  if (!pdfFiles.length) { toast('No PDF files found — please upload .pdf files.'); return; }
+  if (!pdfFiles.length) { toast('Please upload PDF files (.pdf format).'); return; }
 
   // Close the drop zone — the processing card takes over from here
   document.getElementById('uploadZone').hidden = true;
@@ -636,7 +731,7 @@ async function handleFiles(files) {
       // Transition to OCR step after a brief moment so the user sees the upload step
       const ocrTimer = setTimeout(() => {
         pcStep(1, 'done');
-        pcStep(2, 'active', 'Queued for OCR — processing in background…');
+        pcStep(2, 'active', 'Reading text — this happens in the background');
         document.getElementById('pcBar').style.transition = 'width 8s ease-out';
         pcProgress(base + slot * 0.9);
       }, 800);
@@ -739,14 +834,19 @@ function blobToBase64(blob) {
 // ── Extraction ──
 async function runExtraction(jobId, btn) {
   if (healthStatus && !healthStatus.services.openai) {
-    toast('OpenAI is not configured yet. Check the setup guide at the top of the page.');
+    toast('AI extraction isn\'t set up yet. Follow the setup guide at the top of the page.');
     return;
   }
 
   if (btn) { btn.disabled = true; btn.textContent = 'Extracting…'; }
 
+  // Read per-file template selector if present
+  const select = document.getElementById(`tmpl-select-${jobId}`);
+  const templateId = select?.value || undefined;
+  const body = templateId ? JSON.stringify({ template_id: templateId }) : undefined;
+
   try {
-    await api(`/jobs/${jobId}/extract`, { method: 'POST' });
+    await api(`/jobs/${jobId}/extract`, { method: 'POST', ...(body && { body }) });
     delete jobDetailCache[jobId];
     await openBucket(currentBucket.id, true);
     await toggleJobDetail(jobId);
@@ -760,7 +860,7 @@ async function runAllPending() {
   if (!currentBucket) return;
   const data = await api(`/buckets/${currentBucket.id}`);
   const pending = (data.jobs || []).filter(j => j.status === 'pending');
-  if (!pending.length) { toast('No pending jobs to run.'); return; }
+  if (!pending.length) { toast('All documents have already been extracted.'); return; }
 
   for (const job of pending) {
     try { await runExtraction(job.id); } catch (e) { console.error(e); }
@@ -773,7 +873,7 @@ async function deleteJob(jobId) {
     await api(`/jobs/${jobId}`, { method: 'DELETE' });
     await openBucket(currentBucket.id, true);
   } catch (e) {
-    toast('Failed to remove job: ' + e.message);
+    toast('Couldn\'t delete document: ' + e.message);
   }
 }
 
@@ -791,7 +891,7 @@ async function exportBucketCSV() {
     return;
   }
   const doneJobs = (data.jobs || []).filter(j => j.status === 'done');
-  if (!doneJobs.length) { toast('No completed extractions to export.'); return; }
+  if (!doneJobs.length) { toast('Nothing to export yet — extract some documents first.'); return; }
 
   const details = await Promise.all(doneJobs.map(async j => {
     if (!jobDetailCache[j.id]) {
@@ -847,15 +947,15 @@ async function showTemplateList() {
   const templates = await api('/templates');
   const grid = document.getElementById('templateGrid');
   if (!templates.length) {
-    grid.innerHTML = `<p class="empty-state">No templates yet — create one to get started.</p>`;
+    grid.innerHTML = `<p class="empty-state">No templates yet. Create your first one to start extracting data from PDFs.</p>`;
     return;
   }
   grid.innerHTML = templates.map(t => `
-    <div class="card" onclick="editTemplate('${t.id}')">
+    <div class="card" onclick="showTemplateDetail('${t.id}')">
       <h3>${esc(t.name)}</h3>
-      <p>${esc(t.doc_type_hint || 'General document type')}</p>
+      <p>${esc(t.doc_type_hint || 'General document')}</p>
       <div class="card-actions">
-        <button class="small" onclick="event.stopPropagation(); editTemplate('${t.id}')">Edit fields</button>
+        <button class="small" onclick="event.stopPropagation(); editTemplate('${t.id}')">Edit Fields</button>
         <button class="small" onclick="event.stopPropagation(); duplicateTemplate('${t.id}')">Duplicate</button>
         <button class="small danger" onclick="event.stopPropagation(); deleteTemplate('${t.id}')">Delete</button>
       </div>
@@ -921,6 +1021,7 @@ async function saveTemplate(e) {
   })).filter(f => f.title);
 
   try {
+    invalidateTemplateCache();
     if (editingTemplateId) {
       await api(`/templates/${editingTemplateId}`, {
         method: 'PUT',
@@ -954,15 +1055,16 @@ async function deleteTemplate(id) {
     const buckets = await api('/buckets');
     const using = buckets.filter(b => b.template_id === id).map(b => b.name);
     if (using.length) {
-      toast(`Can't delete — used by: ${using.join(', ')}`);
+      toast(`This template is in use by: ${using.join(', ')}. Remove it from those buckets first.`);
       return;
     }
   } catch (e) {
     toast('Failed to check template usage: ' + e.message);
     return;
   }
-  if (!confirm('Delete this template?')) return;
+  if (!confirm('Delete this template permanently?')) return;
   try {
+    invalidateTemplateCache();
     await api(`/templates/${id}`, { method: 'DELETE' });
     showTemplateList();
   } catch (e) {
@@ -972,6 +1074,7 @@ async function deleteTemplate(id) {
 
 async function duplicateTemplate(id) {
   try {
+    invalidateTemplateCache();
     const t = await api(`/templates/${id}`);
     await api('/templates', { method: 'POST', body: JSON.stringify({
       name: `Copy of ${t.name}`,
@@ -979,7 +1082,7 @@ async function duplicateTemplate(id) {
       fields: t.fields,
     })});
     showTemplateList();
-    toast('Template duplicated!', 3000, 'success');
+    toast('Template duplicated successfully.', 3000, 'success');
   } catch (e) {
     toast('Failed to duplicate template: ' + e.message);
   }
@@ -997,10 +1100,10 @@ async function showNewBucket() {
   const templates = await api('/templates');
   const sel = document.getElementById('bucketTemplateSelect');
   if (!templates.length) {
-    sel.innerHTML = '<option value="" disabled>No templates yet — create one first</option>';
+    sel.innerHTML = '<option value="" disabled>No templates available — create one first</option>';
     return;
   }
-  sel.innerHTML = `<option value="">— choose a template —</option>` + templates.map(t =>
+  sel.innerHTML = `<option value="">Select a template…</option>` + templates.map(t =>
     `<option value="${t.id}">${esc(t.name)}</option>`
   ).join('');
   if (pendingTemplateSelect) {
@@ -1018,7 +1121,7 @@ async function previewTemplate(templateId) {
     const fields = t.fields || [];
     box.hidden = false;
     box.innerHTML = `
-      <p>${fields.length} field${fields.length !== 1 ? 's' : ''} will be extracted:</p>
+      <p>This template extracts ${fields.length} field${fields.length !== 1 ? 's' : ''}:</p>
       <div class="field-pills">
         ${fields.map(f => `<span class="field-pill ${f.required ? 'required' : ''}" title="${esc(f.description || '')}">${esc(f.title)}</span>`).join('')}
       </div>
@@ -1032,14 +1135,14 @@ async function saveBucket(e) {
   e.preventDefault();
   const name = document.getElementById('bucketNameInput').value.trim();
   const template_id = document.getElementById('bucketTemplateSelect').value;
-  if (!template_id) { toast('Pick a template first.'); return; }
+  if (!template_id) { toast('Please select a template for this bucket.'); return; }
   await api('/buckets', { method: 'POST', body: JSON.stringify({ name, template_id }) });
   navStack.pop();
   showDashboard();
 }
 
 async function deleteBucket(id) {
-  if (!confirm('Delete this bucket and all its documents?')) return;
+  if (!confirm('Delete this bucket and all its documents? This can\'t be undone.')) return;
   await api(`/buckets/${id}`, { method: 'DELETE' });
   showDashboard();
 }
@@ -1122,7 +1225,7 @@ function clearBuilderSample() {
 // ── Generate from AI ──
 async function generateTemplate() {
   const desc = document.getElementById('builderDesc').value.trim();
-  if (!desc) { toast('Please describe what data you want to extract.'); return; }
+  if (!desc) { toast('Describe the data you want to extract first.'); return; }
 
   document.getElementById('builderInput').hidden = true;
   document.getElementById('builderGenerating').hidden = false;
@@ -1131,9 +1234,9 @@ async function generateTemplate() {
   const statusEl = document.getElementById('builderGenStatus');
   const subEl = document.getElementById('builderGenSub');
   statusEl.textContent = builderPages.length > 0
-    ? 'Analyzing your document and description…'
-    : 'Analyzing your description…';
-  subEl.textContent = 'This usually takes 5–15 seconds.';
+    ? 'AI is analyzing your document and description…'
+    : 'AI is designing your template…';
+  subEl.textContent = 'Usually takes 5–15 seconds.';
 
   try {
     const result = await api('/templates/build', {
@@ -1175,6 +1278,7 @@ async function saveBuiltTemplate(e) {
   })).filter(f => f.title);
 
   try {
+    invalidateTemplateCache();
     const saved = await api('/templates', { method: 'POST', body: JSON.stringify({ name, doc_type_hint, fields }) });
     if (afterTemplateSaved) {
       const cb = afterTemplateSaved;
@@ -1184,7 +1288,7 @@ async function saveBuiltTemplate(e) {
     }
     navStack.pop();
     showTemplateList();
-    toast('Template saved!', 4000, 'success');
+    toast('Template saved successfully.', 4000, 'success');
   } catch (e) {
     toast('Failed to save template: ' + e.message);
   }
@@ -1292,7 +1396,7 @@ async function saveSettings() {
       }),
     });
     document.getElementById('settingsOcrBatchSize').value = ocrBatchSize;
-    toast('Settings saved!', 3000, 'success');
+    toast('Settings saved.', 3000, 'success');
   } catch (e) {
     toast('Failed to save settings: ' + e.message);
   } finally {
@@ -1302,7 +1406,7 @@ async function saveSettings() {
 }
 
 function resetPrompt(key) {
-  if (!confirm('Reset this prompt to the default? Your edits will be lost.')) return;
+  if (!confirm('Reset to default? Your custom instructions will be replaced.')) return;
   const id = key === 'extraction_prompt' ? 'settingsExtractionPrompt' : 'settingsBuilderPrompt';
   document.getElementById(id).value = PROMPT_DEFAULTS[key];
 }
@@ -1355,6 +1459,193 @@ async function seedStarterTemplates() {
   for (const t of STARTERS) {
     await api('/templates', { method: 'POST', body: JSON.stringify(t) });
   }
+}
+
+// ── All Documents view ──
+async function showAllDocuments() {
+  if (navStack[navStack.length - 1] !== 'allDocuments') navStack.push('allDocuments');
+  showView('viewAllDocuments');
+  updateBreadcrumb([{ label: 'Documents' }]);
+
+  document.getElementById('docsSearchInput').value = '';
+  document.getElementById('docsStatusFilter').value = '';
+
+  try {
+    allDocsCache = await api('/jobs');
+    renderAllDocs(allDocsCache);
+  } catch (e) {
+    toast('Failed to load documents: ' + e.message);
+  }
+}
+
+function filterAllDocuments() {
+  if (!allDocsCache) return;
+  const search = document.getElementById('docsSearchInput').value.trim().toLowerCase();
+  const status = document.getElementById('docsStatusFilter').value;
+  let filtered = allDocsCache;
+  if (search) filtered = filtered.filter(j => j.filename.toLowerCase().includes(search));
+  if (status) filtered = filtered.filter(j => j.status === status);
+  renderAllDocs(filtered);
+}
+
+function renderAllDocs(jobs) {
+  const tbody = document.getElementById('allDocsBody');
+  const empty = document.getElementById('noDocsMessage');
+
+  if (!jobs.length) {
+    tbody.innerHTML = '';
+    empty.hidden = false;
+    return;
+  }
+  empty.hidden = true;
+
+  tbody.innerHTML = jobs.map(j => {
+    const date = new Date(j.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    return `
+      <tr class="job-row expandable" onclick="navigateToBucketJob('${j.bucket_id}', '${j.id}')" style="cursor:pointer">
+        <td class="filename-cell" title="${esc(j.filename)}">${esc(j.filename)}</td>
+        <td><a onclick="event.stopPropagation(); openBucket('${j.bucket_id}')" style="color:var(--primary);cursor:pointer">${esc(j.bucket_name || '—')}</a></td>
+        <td>${j.page_count ?? '—'}</td>
+        <td><span class="status-badge status-${j.status}">${STATUS_LABELS[j.status] || j.status}</span></td>
+        <td>${esc(j.template_name || '—')}</td>
+        <td style="white-space:nowrap">${date}</td>
+      </tr>`;
+  }).join('');
+}
+
+async function navigateToBucketJob(bucketId, jobId) {
+  await openBucket(bucketId);
+  if (document.getElementById(`wrap-${jobId}`)) {
+    await toggleJobDetail(jobId);
+  }
+}
+
+// ── Template detail view ──
+async function showTemplateDetail(id, isBack) {
+  viewingTemplateId = id;
+  if (!isBack) navStack.push('templateDetail:' + id);
+  showView('viewTemplateDetail');
+
+  try {
+    const t = await api(`/templates/${id}`);
+    document.getElementById('templateDetailName').textContent = t.name;
+    document.getElementById('templateDetailHint').textContent = t.doc_type_hint || 'General document';
+
+    updateBreadcrumb([
+      { label: 'Templates', action: 'goToTemplates()' },
+      { label: t.name },
+    ]);
+
+    // Fields section
+    const fieldsEl = document.getElementById('templateDetailFields');
+    const fields = t.fields || [];
+    fieldsEl.innerHTML = `
+      <h3>Fields (${fields.length})</h3>
+      <div class="field-pills">
+        ${fields.map(f => `<span class="field-pill ${f.required ? 'required' : ''}" title="${esc(f.description || '')}${f.type ? ' (' + f.type + ')' : ''}">${esc(f.title)}<span style="font-size:10px;color:var(--muted);margin-left:4px">${f.type}</span></span>`).join('')}
+      </div>
+    `;
+
+    // Buckets using this template
+    const bucketsEl = document.getElementById('templateDetailBuckets');
+    const buckets = t.buckets_using || [];
+    bucketsEl.innerHTML = `
+      <h3>Used by ${buckets.length} bucket${buckets.length !== 1 ? 's' : ''}</h3>
+      ${buckets.length
+        ? buckets.map(b => `<a class="bucket-link" onclick="openBucket('${b.id}')">${esc(b.name)}</a>`).join('')
+        : '<p style="font-size:13px;color:var(--muted)">Not assigned to any buckets yet. Create a bucket to start using this template.</p>'
+      }
+    `;
+
+    // Recent extraction runs
+    const runsEl = document.getElementById('templateDetailRuns');
+    const runs = t.recent_runs || [];
+    if (runs.length) {
+      runsEl.innerHTML = `
+        <h3>Recent Extractions</h3>
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr><th>File</th><th>Bucket</th><th>Status</th><th>Date</th></tr></thead>
+          <tbody>${runs.map(r => {
+            const date = new Date(r.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+            return `<tr>
+              <td style="font-size:13px">${esc(r.filename || '—')}</td>
+              <td style="font-size:13px">${esc(r.bucket_name || '—')}</td>
+              <td><span class="status-badge status-${r.status}">${STATUS_LABELS[r.status] || r.status}</span></td>
+              <td style="font-size:12px;white-space:nowrap;color:var(--muted)">${date}</td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table>
+      `;
+    } else {
+      runsEl.innerHTML = `
+        <h3>Recent Extractions</h3>
+        <p style="font-size:13px;color:var(--muted)">No extractions yet. Upload documents to a bucket using this template to see results here.</p>
+      `;
+    }
+  } catch (e) {
+    toast('Failed to load template: ' + e.message);
+  }
+}
+
+// ── Quick upload from dashboard ──
+function quickUpload(bucketId) {
+  openBucket(bucketId).then(() => {
+    document.getElementById('uploadZone').hidden = false;
+  });
+}
+
+// ── Batch re-extract with template override ──
+async function showReExtractPanel() {
+  const panel = document.getElementById('reExtractPanel');
+  if (!panel.hidden) { panel.hidden = true; return; }
+
+  const templates = await ensureTemplatesLoaded();
+  const defaultTmplId = currentBucket?.template_id;
+  const opts = templates.map(t =>
+    `<option value="${t.id}"${t.id === defaultTmplId ? ' selected' : ''}>${esc(t.name)}</option>`
+  ).join('');
+
+  const s = currentBucket?.stats || {};
+  const count = (s.done_count || 0) + (s.error_count || 0);
+
+  panel.hidden = false;
+  panel.innerHTML = `
+    <span class="re-extract-label">Re-extract ${count} document${count !== 1 ? 's' : ''} using:</span>
+    <select id="reExtractTemplateSelect">${opts}</select>
+    <button class="small primary" onclick="runBatchReExtract()">Run</button>
+    <button class="small" onclick="document.getElementById('reExtractPanel').hidden = true">Cancel</button>
+  `;
+}
+
+async function runBatchReExtract() {
+  if (!currentBucket) return;
+  const select = document.getElementById('reExtractTemplateSelect');
+  const templateId = select.value;
+  const panel = document.getElementById('reExtractPanel');
+
+  const data = await api(`/buckets/${currentBucket.id}`);
+  const eligible = (data.jobs || []).filter(j => j.status === 'done' || j.status === 'error');
+  if (!eligible.length) { toast('No documents available for re-extraction.'); return; }
+
+  panel.innerHTML = `<span class="re-extract-label">Re-extracting ${eligible.length} document${eligible.length !== 1 ? 's' : ''}… please wait</span>`;
+
+  let success = 0;
+  for (const job of eligible) {
+    try {
+      await api(`/jobs/${job.id}/extract`, {
+        method: 'POST',
+        body: JSON.stringify({ template_id: templateId }),
+      });
+      delete jobDetailCache[job.id];
+      success++;
+    } catch (e) {
+      console.error(`Re-extract failed for ${job.filename}:`, e);
+    }
+  }
+
+  panel.hidden = true;
+  toast(`Done — ${success} of ${eligible.length} documents re-extracted.`, 4000, 'success');
+  await openBucket(currentBucket.id, true);
 }
 
 // ── Bucket rename ──
@@ -1434,6 +1725,11 @@ Object.assign(window, {
   openBuilderFromBucket, exportBucketCSV, startRenameBucket,
   showSettings, saveSettings, resetPrompt,
   toggleDebugPanel, clearDebugPanel, updateDebugCount,
+  // New: product improvements
+  showAllDocuments, filterAllDocuments, navigateToBucketJob,
+  showTemplateDetail, getViewingTemplateId: () => viewingTemplateId,
+  quickUpload, showReExtractPanel, runBatchReExtract,
+  switchRunTab,
 });
 
 // ── Init ──

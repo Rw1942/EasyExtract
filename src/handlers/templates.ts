@@ -30,7 +30,22 @@ async function getTemplate(env: Env, id: string): Promise<Response> {
     .bind(id)
     .all<TemplateField>();
 
-  return ok({ ...template, fields });
+  // Buckets using this template
+  const { results: buckets_using } = await env.DB.prepare(
+    'SELECT id, name FROM buckets WHERE template_id = ?',
+  ).bind(id).all();
+
+  // Recent extraction runs using this template (last 20)
+  const { results: recent_runs } = await env.DB.prepare(
+    `SELECT r.id, r.status, r.created_at, j.filename, b.name as bucket_name
+     FROM runs r
+     LEFT JOIN jobs j ON r.job_id = j.id
+     LEFT JOIN buckets b ON j.bucket_id = b.id
+     WHERE r.template_id = ?
+     ORDER BY r.created_at DESC LIMIT 20`,
+  ).bind(id).all();
+
+  return ok({ ...template, fields, buckets_using, recent_runs });
 }
 
 async function createTemplate(req: Request, env: Env): Promise<Response> {

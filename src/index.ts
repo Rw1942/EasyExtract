@@ -3,7 +3,7 @@ import { ok, err } from './types';
 import { handleTemplates } from './handlers/templates';
 import { handleBuckets } from './handlers/buckets';
 import { handleUpload } from './handlers/upload';
-import { handleExtract, handleGetJob, handleDeleteJob } from './handlers/extract';
+import { handleExtract, handleGetJob, handleDeleteJob, handleListJobs } from './handlers/extract';
 import { handleBuildTemplate } from './handlers/buildTemplate';
 import { handleSettings } from './handlers/settings';
 
@@ -56,6 +56,12 @@ export default {
       const extractMatch = path.match(/^\/api\/jobs\/([^/]+)\/extract$/);
       if (extractMatch && request.method === 'POST') {
         res = await handleExtract(request, env, extractMatch[1]);
+        return corsWrap(res);
+      }
+
+      // GET /api/jobs — list all jobs across buckets (must come before :id match)
+      if (path === '/api/jobs' && request.method === 'GET') {
+        res = await handleListJobs(env, url);
         return corsWrap(res);
       }
 
