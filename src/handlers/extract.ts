@@ -3,6 +3,17 @@ import type { Env, Job, Template, TemplateField } from '../types';
 import { ok, err, uid } from '../types';
 import { extract } from '../services/openai';
 
+async function ensureJobPreviewTable(env: Env): Promise<void> {
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS job_previews (
+      job_id TEXT PRIMARY KEY,
+      preview_page TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+    )`,
+  ).run();
+}
+
 export async function handleExtract(req: Request, env: Env, jobId: string): Promise<Response> {
   if (!env.OPENAI_API_KEY) {
     return err(503, 'NOT_CONFIGURED', 'OpenAI is not configured. Add OPENAI_API_KEY with Wrangler secrets.');
@@ -65,6 +76,8 @@ export async function handleExtract(req: Request, env: Env, jobId: string): Prom
 }
 
 export async function handleGetJob(env: Env, jobId: string): Promise<Response> {
+  await ensureJobPreviewTable(env);
+
   const job = await env.DB.prepare(
     `SELECT j.*, b.name as bucket_name, b.template_id as bucket_template_id,
             t.name as bucket_template_name, p.preview_page
@@ -94,6 +107,8 @@ export async function handleGetJob(env: Env, jobId: string): Promise<Response> {
 
 /** List all jobs across buckets — supports ?status= and ?search= filters. */
 export async function handleListJobs(env: Env, url: URL): Promise<Response> {
+  await ensureJobPreviewTable(env);
+
   const status = url.searchParams.get('status');
   const search = url.searchParams.get('search');
   const bucketId = url.searchParams.get('bucket_id');
