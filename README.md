@@ -1,36 +1,76 @@
 # EasyExtract
 
-Cloudflare Worker API for OCR + structured extraction.
+Last updated: 2026-03-18 20:19:29 MDT
 
-## Deployments (use this, always)
+Turn PDFs and document images into structured data using a Cloudflare Worker.
 
-Use the safe deploy command:
+## What You Need
+- A Cloudflare account
+- Node.js 18+
+- This repo cloned locally
 
-`npm run deploy:safe`
+## First Deploy (Cloudflare Beginner Path)
+1. Install dependencies
 
-This command is the standard release path. It runs:
-- Typecheck
-- Required secret verification (`OPENAI_API_KEY`, `GCP_SA_KEY`, `GCP_PROJECT_ID`)
-- Worker deploy
-- Live `/api/health` validation
+```bash
+npm install
+```
 
-If any step fails, deployment exits with a clear error.
+2. Log in to Cloudflare
 
-## First-time production setup
+```bash
+npx wrangler login
+```
 
-Set required secrets once:
+3. Create your D1 database (one time)
 
-- `npx wrangler secret put OPENAI_API_KEY`
-- `npx wrangler secret put GCP_SA_KEY`
-- `npx wrangler secret put GCP_PROJECT_ID`
+```bash
+npx wrangler d1 create easyextract-db
+```
 
-Then deploy with:
+4. Update `wrangler.toml`
+- Set `database_id` to the ID returned by the create command.
+- Keep `binding = "DB"`.
 
-`npm run deploy:safe`
+5. Create required secrets (one time)
 
-## Optional health URL override
+```bash
+npx wrangler secret put OPENAI_API_KEY
+npx wrangler secret put GCP_SA_KEY
+npx wrangler secret put GCP_PROJECT_ID
+```
 
-If you need to target a different Worker URL:
+6. Deploy safely
 
-- `HEALTH_URL=https://<worker-domain>/api/health npm run deploy:safe`
-- or `./scripts/deploy-safe.sh --url https://<worker-domain>`
+```bash
+npm run deploy:safe
+```
+
+That command runs typecheck, verifies required secrets, deploys, and checks `/api/health`.
+
+## Local Development
+1. Add local vars in `.dev.vars`
+
+```env
+OPENAI_API_KEY=...
+GCP_SA_KEY={...json...}
+GCP_PROJECT_ID=...
+```
+
+2. Start local server
+
+```bash
+npm run dev
+```
+
+## Daily Commands
+```bash
+npm run dev          # local app
+npm run typecheck    # TypeScript check
+npm run deploy:safe  # production deploy with health validation
+```
+
+## Troubleshooting
+- `Missing required secret`: run `npx wrangler secret put <NAME>`
+- `no such table`: ensure your D1 DB is created and `database_id` is correct in `wrangler.toml`
+- Deploy health failure: open `/api/health` and confirm all services are `true`
