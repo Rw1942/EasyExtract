@@ -3,6 +3,8 @@ import type { TemplateField } from '../types';
 import { EXTRACTION_PROMPT_DEFAULT } from '../prompts';
 import { type ResponsesApiResponse, extractOutputText } from './openaiTypes';
 
+const EXTRACTION_TIMEOUT_MS = 95_000;
+
 function mapScalarType(type: string): string {
   return type === 'number' ? 'number' : 'string';
 }
@@ -104,7 +106,8 @@ export async function extract(
   const { schema, strict } = buildJsonSchema(fields);
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 60_000);
+  // Financial templates with many array/object fields can exceed 60s on Responses API.
+  const timeout = setTimeout(() => controller.abort(), EXTRACTION_TIMEOUT_MS);
 
   try {
     const res = await fetch('https://api.openai.com/v1/responses', {
