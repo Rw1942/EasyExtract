@@ -8,11 +8,11 @@
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
     "db:migrate": "wrangler d1 execute easyextract-db --local --file=src/db/schema.sql",
-    "db:migrate:remove-bucket-template": "wrangler d1 execute easyextract-db --local --file=src/db/migrations/2026-03-18-remove-bucket-template.sql"
+    "db:migrate:remove-bucket-template": "wrangler d1 execute easyextract-db --local --file=src/db/migrations/2026-03-18-remove-bucket-template.sql",
+    "cf-typegen": "wrangler types"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250214.0",
     "typescript": "^5.7.3",
-    "wrangler": "^4.75.0"
+    "wrangler": "^4.166.0"
   }
 }

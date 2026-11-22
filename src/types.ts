@@ -1,10 +1,3 @@
-export interface Env {
-  DB: D1Database;
-  GCP_SA_KEY: string;
-  GCP_PROJECT_ID: string;
-  OPENAI_API_KEY: string;
-}
-
 export interface Template {
   id: string;
   name: string;
@@ -39,16 +32,6 @@ export interface Job {
   status: string;
   ocr_text: string | null;
   page_count: number | null;
-  created_at: string;
-}
-
-export interface Run {
-  id: string;
-  job_id: string;
-  template_id: string;
-  status: string;
-  result: string | null;
-  error: string | null;
   created_at: string;
 }
 

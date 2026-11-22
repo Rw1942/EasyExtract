@@ -1,0 +1,16 @@
+# Codex settings for this project. Codex reads this file only after the project
+# is marked trusted in ~/.codex/config.toml. Standard: Rw1942/cloudflare-account,
+# docs/project-standard.md.
+
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+# npm, Wrangler and the Cloudflare API need the network.
+network_access = true
+
+# Cloudflare Code Mode: the whole Cloudflare API through search and execute.
+[mcp_servers.cloudflare-api]
+url = "https://mcp.cloudflare.com/mcp"
+bearer_token_env_var = "CLOUDFLARE_API_TOKEN"
+tool_timeout_sec = 120

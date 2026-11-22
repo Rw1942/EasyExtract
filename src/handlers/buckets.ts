@@ -1,5 +1,5 @@
 // Bucket CRUD — buckets group related documents for upload, review, and extraction workflows.
-import type { Env, Bucket, Job } from '../types';
+import type { Bucket, Job } from '../types';
 import { ok, err, uid } from '../types';
 import { ensureJobClassificationTable } from '../services/classification';
 

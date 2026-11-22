@@ -1,6 +1,5 @@
 // Google Cloud Vision OCR service — batches page images and returns concatenated document text.
 import { getAccessToken } from './auth';
-import type { Env } from '../types';
 
 const VISION_ENDPOINT = 'https://vision.googleapis.com/v1/images:annotate';
 const BATCH_LIMIT = 16;

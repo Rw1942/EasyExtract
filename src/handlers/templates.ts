@@ -1,5 +1,5 @@
 // Template CRUD — templates define the fields to extract from a document type.
-import type { Env, Template, TemplateField } from '../types';
+import type { Template, TemplateField } from '../types';
 import { ok, err, uid } from '../types';
 
 export async function handleTemplates(req: Request, env: Env, path: string): Promise<Response> {

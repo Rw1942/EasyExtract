@@ -1,4 +1,4 @@
-import type { Env, TemplateField } from '../types';
+import type { TemplateField } from '../types';
 import { type ResponsesApiResponse, extractOutputText } from './openaiTypes';
 
 const CLASSIFICATION_TABLE_SQL = `CREATE TABLE IF NOT EXISTS job_classifications (

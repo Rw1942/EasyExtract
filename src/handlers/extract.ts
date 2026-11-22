@@ -1,5 +1,5 @@
 // Job extraction — runs OCR text through OpenAI to fill a template's fields.
-import type { Env, Job, Template, TemplateField } from '../types';
+import type { Job, Template, TemplateField } from '../types';
 import { ok, err, uid } from '../types';
 import { extract } from '../services/openai';
 import { ensureJobClassificationTable } from '../services/classification';

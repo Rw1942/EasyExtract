@@ -1,5 +1,4 @@
 // Upload handler — accepts base64 JPEG pages, runs OCR via Google Cloud Vision, stores result.
-import type { Env } from '../types';
 import { ok, err, uid } from '../types';
 import { ocrPages } from '../services/documentAi';
 import { classifyJob } from '../services/classification';

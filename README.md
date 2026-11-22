@@ -1,88 +1,23 @@
 # EasyExtract
 
-Last updated: 2026-03-18 20:19:29 MDT
+Turns PDFs and document images into structured data. A Cloudflare Worker runs OCR with Google
+Cloud Vision, extracts the fields a template defines with OpenAI, and keeps buckets, templates and
+jobs in D1. The browser app is served from `public/`. Live at
+https://easyextract.rick-wills.workers.dev.
 
-Turn PDFs and document images into structured data using a Cloudflare Worker.
+## Run it
 
-## What You Need
-- A Cloudflare account
-- Node.js 18+
-- This repo cloned locally
-
-## First Deploy (Cloudflare Beginner Path)
-1. Install dependencies
+Needs Node.js 22 or later and `CLOUDFLARE_API_TOKEN` in the environment for anything remote.
 
 ```bash
-npm install
+npm ci
+cp .dev.vars.example .dev.vars   # fill in the OpenAI key and Google service account
+npm run db:migrate               # create the local D1 tables
+npm run dev                      # http://localhost:8787
 ```
 
-2. Authenticate Wrangler with a Cloudflare API token
+Deploy with `npm run deploy:safe`: it typechecks, confirms the secrets `OPENAI_API_KEY`,
+`GCP_SA_KEY` and `GCP_PROJECT_ID` exist (`npx wrangler secret put <NAME>` sets one), deploys, and
+checks `/api/health`.
 
-```bash
-export CLOUDFLARE_API_TOKEN=...
-```
-
-Wrangler reads the token from the environment. `npx wrangler login` also works for an interactive session on your own machine.
-
-3. Create your D1 database (one time)
-
-```bash
-npx wrangler d1 create easyextract-db
-```
-
-4. Update `wrangler.toml`
-- Set `database_id` to the ID returned by the create command.
-- Keep `binding = "DB"`.
-
-5. Create required secrets (one time)
-
-```bash
-npx wrangler secret put OPENAI_API_KEY
-npx wrangler secret put GCP_SA_KEY
-npx wrangler secret put GCP_PROJECT_ID
-```
-
-6. Deploy safely
-
-```bash
-npm run deploy:safe
-```
-
-That command runs typecheck, verifies required secrets, deploys, and checks `/api/health`.
-
-## Local Development
-1. Add local vars in `.dev.vars`
-
-```env
-OPENAI_API_KEY=...
-GCP_SA_KEY={...json...}
-GCP_PROJECT_ID=...
-```
-
-2. Start local server
-
-```bash
-npm run dev
-```
-
-## Daily Commands
-```bash
-npm run dev          # local app
-npm run typecheck    # TypeScript check
-npm run deploy:safe  # production deploy with health validation
-```
-
-## One-Time Migration (Existing Databases)
-If your database was created before bucket template defaults were removed, run this once first:
-
-```bash
-npm run db:migrate:remove-bucket-template
-npm run db:migrate
-```
-
-This preserves existing bucket rows and removes the legacy bucket-level `template_id` column.
-
-## Troubleshooting
-- `Missing required secret`: run `npx wrangler secret put <NAME>`
-- `no such table`: ensure your D1 DB is created and `database_id` is correct in `wrangler.toml`
-- Deploy health failure: open `/api/health` and confirm all services are `true`
+Coding agents start with `AGENTS.md`.

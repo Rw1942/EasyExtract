@@ -1,5 +1,4 @@
 // AI-assisted template builder — generates extraction field schemas from a plain-text description.
-import type { Env } from '../types';
 import { ok, err } from '../types';
 import { BUILDER_PROMPT_DEFAULT } from '../prompts';
 import { type ResponsesApiResponse, extractOutputText } from '../services/openaiTypes';

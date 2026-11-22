@@ -1,0 +1,5 @@
+# Local secrets for `npm run dev`. Copy to .dev.vars and fill in; never commit .dev.vars.
+OPENAI_API_KEY=
+# The Google service account JSON on one line.
+GCP_SA_KEY=
+GCP_PROJECT_ID=

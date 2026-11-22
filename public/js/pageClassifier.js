@@ -360,7 +360,3 @@ export function classifyOcrPagesDetailed(ocrText, templates, options = {}, onPro
     },
   };
 }
-
-export function classifyOcrPages(ocrText, templates, options = {}) {
-  return classifyOcrPagesDetailed(ocrText, templates, options);
-}

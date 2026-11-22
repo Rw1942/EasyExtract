@@ -1,0 +1,30 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "easyextract",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-22",
+  // Production is on workers.dev; preview URLs were on when this was standardized.
+  "workers_dev": true,
+  "preview_urls": true,
+  "upload_source_maps": true,
+  "observability": {
+    "enabled": true,
+    "logs": { "enabled": true, "head_sampling_rate": 1 },
+    "traces": { "enabled": true, "head_sampling_rate": 1 },
+    "issues": { "enabled": true }
+  },
+  // Static files are served first; requests with no matching file (the /api routes) reach the Worker.
+  "assets": {
+    "directory": "./public"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "easyextract-db",
+      "database_id": "0dccdc9d-122c-40ce-96c3-4073bcbda09f"
+    }
+  ],
+  "secrets": {
+    "required": ["OPENAI_API_KEY", "GCP_SA_KEY", "GCP_PROJECT_ID"]
+  }
+}

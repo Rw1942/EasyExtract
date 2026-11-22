@@ -1,4 +1,3 @@
-import type { Env } from './types';
 import { ok, err } from './types';
 import { handleTemplates } from './handlers/templates';
 import { handleBuckets } from './handlers/buckets';
