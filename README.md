@@ -16,11 +16,13 @@ Turn PDFs and document images into structured data using a Cloudflare Worker.
 npm install
 ```
 
-2. Log in to Cloudflare
+2. Authenticate Wrangler with a Cloudflare API token
 
 ```bash
-npx wrangler login
+export CLOUDFLARE_API_TOKEN=...
 ```
+
+Wrangler reads the token from the environment. `npx wrangler login` also works for an interactive session on your own machine.
 
 3. Create your D1 database (one time)
 

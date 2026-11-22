@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "enabledMcpjsonServers": ["cloudflare-api"],
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": ["Bash", "Edit", "Write", "WebFetch", "WebSearch", "mcp__cloudflare-api"],
+    "ask": [
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git push * --force*)",
+      "Bash(git push * -f*)",
+      "Bash(*wrangler delete*)",
+      "Bash(*wrangler d1 delete*)",
+      "Bash(*wrangler r2 bucket delete*)",
+      "Bash(*wrangler kv namespace delete*)"
+    ]
+  }
+}
